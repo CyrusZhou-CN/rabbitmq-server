@@ -1,0 +1,175 @@
+-module(oauth2_client).
+-export([get_access_token/2,
+        refresh_access_token/2,
+        get_openid_configuration/1,get_openid_configuration/2,get_openid_configuration/3]).
+
+-include("oauth2_client.hrl").
+
+
+-spec get_access_token(oauth_provider(), access_token_request()) ->
+  {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.
+get_access_token(OAuthProvider, Request) ->
+  URL = OAuthProvider#oauth_provider.token_endpoint,
+  Header = [],
+  Type = ?CONTENT_URLENCODED,
+  Body = build_access_token_request_body(Request),
+  HTTPOptions = get_ssl_options_if_any(OAuthProvider) ++
+    get_timeout_of_default(Request#access_token_request.timeout),
+  Options = [],
+  Response = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
+  parse_access_token_response(Response).
+
+-spec refresh_access_token(oauth_provider(), refresh_token_request()) ->
+  {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.
+refresh_access_token(OAuthProvider, Request) ->
+  URL = OAuthProvider#oauth_provider.token_endpoint,
+  Header = [],
+  Type = ?CONTENT_URLENCODED,
+  Body = build_refresh_token_request_body(Request),
+  HTTPOptions = get_ssl_options_if_any(OAuthProvider) ++
+    get_timeout_of_default(Request#refresh_token_request.timeout),
+  Options = [],
+  Response = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
+  parse_access_token_response(Response).
+
+-spec get_openid_configuration(uri_string:uri_string(), erlang:iodata(), ssl:tls_option() | []) -> {ok, oauth_provider()} | {error, term()}.
+get_openid_configuration(IssuerURI, OpenIdConfigurationPath, TLSOptions) ->
+  URL = uri_string:resolve(OpenIdConfigurationPath, IssuerURI),
+  Options = [],
+  Response = httpc:request(get, {URL, []}, TLSOptions, Options),
+  enrich_oauth_provider(parse_openid_configuration_response(Response), TLSOptions).
+
+-spec get_openid_configuration(uri_string:uri_string(), ssl:tls_option() | []) ->  {ok, oauth_provider()} | {error, term()}.
+get_openid_configuration(IssuerURI, TLSOptions) ->
+  get_openid_configuration(IssuerURI, ?DEFAULT_OPENID_CONFIGURATION_PATH, TLSOptions).
+
+-spec get_openid_configuration(uri_string:uri_string()) -> {ok, oauth_provider()} | {error, term()}.
+get_openid_configuration(IssuerURI) ->
+  get_openid_configuration(IssuerURI, ?DEFAULT_OPENID_CONFIGURATION_PATH, []).
+
+
+%% HELPER functions
+
+build_access_token_request_body(Request) ->
+  uri_string:compose_query([
+    grant_type_request_parameter(?CLIENT_CREDENTIALS_GRANT_TYPE),
+    client_id_request_parameter(Request#access_token_request.client_id),
+    client_secret_request_parameter(Request#access_token_request.client_secret)]
+    ++ scope_request_parameter_or_default(Request#access_token_request.scope, [])).
+
+build_refresh_token_request_body(Request) ->
+  uri_string:compose_query([
+    grant_type_request_parameter(?REFRESH_TOKEN_GRANT_TYPE),
+    refresh_token_request_parameter(Request#refresh_token_request.refresh_token),
+    client_id_request_parameter(Request#refresh_token_request.client_id),
+    client_secret_request_parameter(Request#refresh_token_request.client_secret)]
+     ++ scope_request_parameter_or_default(Request#refresh_token_request.scope, [])).
+
+grant_type_request_parameter(Type) ->
+  {?REQUEST_GRANT_TYPE, Type}.
+client_id_request_parameter(Client_id) ->
+  {?REQUEST_CLIENT_ID, binary_to_list(Client_id)}.
+client_secret_request_parameter(Client_secret) ->
+  {?REQUEST_CLIENT_SECRET, binary_to_list(Client_secret)}.
+refresh_token_request_parameter(RefreshToken) ->
+  {?REQUEST_REFRESH_TOKEN, RefreshToken}.
+scope_request_parameter_or_default(Scope, Default) ->
+  case Scope of
+    undefined -> Default;
+    <<>> -> Default;
+    Scope -> [{?REQUEST_SCOPE, Scope}]
+  end.
+
+get_ssl_options_if_any(OAuthProvider) ->
+  case OAuthProvider#oauth_provider.ssl_options of
+    undefined -> [];
+    Options ->  [{ssl, Options}]
+  end.
+get_timeout_of_default(Timeout) ->
+  case Timeout of
+    undefined -> [{timeout, ?DEFAULT_HTTP_TIMEOUT}];
+    Timeout -> [{timeout, Timeout}]
+  end.
+
+-spec decode_body(string(), string() | binary() | term()) -> 'false' | 'null' | 'true' |
+                                                              binary() | [any()] | number() | map() | {error, term()}.
+
+decode_body(_, []) -> [];
+decode_body(?CONTENT_JSON_WITH_CHARSET, Body) ->
+    decode_body(?CONTENT_JSON, Body);
+decode_body(?CONTENT_JSON, Body) ->
+    case rabbit_json:try_decode(rabbit_data_coercion:to_binary(Body)) of
+        {ok, Value} ->
+            Value;
+        {error, _} = Error  ->
+            Error
+    end.
+
+map_to_successful_access_token_response(Json) ->
+  #successful_access_token_response{
+    access_token=maps:get(?RESPONSE_ACCESS_TOKEN, Json),
+    token_type=maps:get(?RESPONSE_TOKEN_TYPE, Json, undefined),
+    refresh_token=maps:get(?RESPONSE_REFRESH_TOKEN, Json, undefined),
+    expires_in=maps:get(?RESPONSE_EXPIRES_IN, Json, undefined)
+  }.
+
+map_to_unsuccessful_access_token_response(Json) ->
+  #unsuccessful_access_token_response{
+    error=maps:get(?RESPONSE_ERROR, Json),
+    error_description=maps:get(?RESPONSE_ERROR_DESCRIPTION, Json, undefined)
+  }.
+
+map_to_oauth_provider(Json) ->
+  #oauth_provider{
+    issuer=maps:get(?RESPONSE_ISSUER, Json),
+    token_endpoint=maps:get(?RESPONSE_TOKEN_ENDPOINT, Json),
+    authorization_endpoint=maps:get(?RESPONSE_AUTHORIZATION_ENDPOINT, Json, undefined),
+    jwks_uri=maps:get(?RESPONSE_JWKS_URI, Json, undefined)
+  }.
+
+enrich_oauth_provider({ok, OAuthProvider}, TLSOptions) ->
+  {ok, OAuthProvider#oauth_provider{ssl_options=TLSOptions}};
+enrich_oauth_provider(Response, _) ->
+  Response.
+
+map_to_access_token_response(Code, Reason, Headers, Body) ->
+  case decode_body(proplists:get_value("content-type", Headers, ?CONTENT_JSON), Body) of
+    {error, {error, InternalError}} ->
+      {error, InternalError};
+    {error, _} = Error ->
+      Error;
+    Value ->
+      case Code of
+        200 -> {ok, map_to_successful_access_token_response(Value)};
+        201 -> {ok, map_to_successful_access_token_response(Value)};
+        204 -> {ok, []};
+        400 -> {error, map_to_unsuccessful_access_token_response(Value)};
+        401 -> {error, map_to_unsuccessful_access_token_response(Value)};
+        _ ->   {error, Reason}
+      end
+  end.
+
+map_response_to_oauth_provider(Code, Reason, Headers, Body) ->
+  case decode_body(proplists:get_value("content-type", Headers, ?CONTENT_JSON), Body) of
+    {error, {error, InternalError}} ->
+      {error, InternalError};
+    {error, _} = Error ->
+      Error;
+    Value ->
+      case Code of
+        200 -> {ok, map_to_oauth_provider(Value)};
+        201 -> {ok, map_to_oauth_provider(Value)};
+        _ ->   {error, Reason}
+      end
+  end.
+
+
+parse_access_token_response({error, Reason}) ->
+  {error, Reason};
+parse_access_token_response({ok,{{_,Code,Reason}, Headers, Body}}) ->
+  map_to_access_token_response(Code, Reason, Headers, Body).
+
+parse_openid_configuration_response({error, Reason}) ->
+  {error, Reason};
+parse_openid_configuration_response({ok,{{_,Code,Reason}, Headers, Body}}) ->
+  map_response_to_oauth_provider(Code, Reason, Headers, Body).

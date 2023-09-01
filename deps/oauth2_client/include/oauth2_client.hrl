@@ -40,6 +40,7 @@
 -define(RESPONSE_AUTHORIZATION_ENDPOINT, <<"authorization_endpoint">>).
 -define(RESPONSE_JWKS_URI, <<"jwks_uri">>).
 
+-type access_token_id() :: binary().
 
 -record(oauth_provider, {
   issuer :: uri_string:uri_string(),

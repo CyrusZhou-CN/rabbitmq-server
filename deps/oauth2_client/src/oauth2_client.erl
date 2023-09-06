@@ -1,36 +1,11 @@
 -module(oauth2_client).
--export([get_access_token/1, get_access_token/2,
+-export([get_access_token/2,
         refresh_access_token/2,
         get_openid_configuration/1,get_openid_configuration/2,get_openid_configuration/3]).
 
 -include("oauth2_client.hrl").
 -define(APP, auth_aouth2).
 
-%% Return an successful_access_token_response() or else throw an error
-%% Once this module is able to refresh automatically the token and report the caller
-%% it can return just the token as a binary
--spec get_access_token(access_token_id()) -> successful_access_token_response().
-get_access_token(AccessTokenId) ->
-  AccessTokenConfig = lookup_access_token(AccessTokenId),
-  OAuthProvider = lookup_oauth_provider(proplists:get_value(<<"oauth_provider">>, AccessTokenConfig)),
-  AccessTokenRequest = #access_token_request{
-    client_id = proplists:get_value(<<"client_id">>, AccessTokenConfig),
-    client_secret = proplists:get_value(<<"client_secret">>, AccessTokenConfig)
-  },
-  AccessTokenRequest0 = case proplists:is_defined(<<"scope">>, AccessTokenConfig) of
-    true -> AccessTokenRequest#access_token_request{scope = proplists:get_value(<<"scope">>, AccessTokenConfig)};
-    false -> AccessTokenRequest
-  end,
-  case get_access_token(OAuthProvider, AccessTokenRequest0) of
-    {ok, AccessToken} -> AccessToken;
-    {error, Error} -> throw(Error)
-  end.
-
-lookup_access_token(AccessTokenId) -> lookup_entry(access_tokens, AccessTokenId).
-lookup_oauth_provider(OAuthProviderId) -> lookup_entry(oauth_providers, OAuthProviderId).
-lookup_entry(Type, Id) ->
-  Map = application:get_env(?APP, Type, #{}),
-  maps:get(Id, Map).
 
 -spec get_access_token(oauth_provider(), access_token_request()) ->
   {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.

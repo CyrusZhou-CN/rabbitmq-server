@@ -129,8 +129,7 @@ groups() ->
 									grants_refresh_token
                  ]},
 		 {http_down, [], [
-									connection_error,
-									get_undefined_access_token
+									connection_error								
 								 ]},
      {https, [], [
 		 							grants_access_token_with_ssl,
@@ -271,9 +270,6 @@ get_openid_configuration(Config) ->
 	?assertEqual(proplists:get_value(token_endpoint, JsonPayload), TokenEndPoint),
 	?assertEqual(proplists:get_value(jwks_uri, JsonPayload), JwksURI).
 
-get_undefined_access_token(Config) ->
-	application:set_env(<<"auth_oauth2">>, <<"access_tokens">>, #{}),
-	?assertException(error, {badkey,<<>>}, oauth2_client:get_access_token(<<>>)).
 
 %%% HELPERS
 build_issuer(Scheme) ->

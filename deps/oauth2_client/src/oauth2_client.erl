@@ -9,7 +9,7 @@
 -spec get_access_token(oauth_provider_id() | oauth_provider(), access_token_request()) ->
   {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.
 get_access_token(OAuth2ProviderId, Request) when is_binary(OAuth2ProviderId) ->
-  get_access_token(lookup_oauth2_provider(OAuth2ProviderId), Request);
+  get_access_token(lookup_oauth2_provider_with_token_endpoint(OAuth2ProviderId), Request);
 
 get_access_token(OAuthProvider, Request) ->
   URL = OAuthProvider#oauth_provider.token_endpoint,
@@ -35,7 +35,7 @@ refresh_access_token(OAuthProvider, Request) ->
   Response = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
   parse_access_token_response(Response).
 
--spec get_openid_configuration(uri_string:uri_string(), erlang:iodata(), ssl:tls_option() | []) -> {ok, oauth_provider()} | {error, term()}.
+-spec get_openid_configuration(uri_string:uri_string(), erlang:iodata() | <<>>, ssl:tls_option() | []) -> {ok, oauth_provider()} | {error, term()}.
 get_openid_configuration(IssuerURI, OpenIdConfigurationPath, TLSOptions) ->
   URL = uri_string:resolve(OpenIdConfigurationPath, IssuerURI),
   Options = [],
@@ -53,13 +53,27 @@ get_openid_configuration(IssuerURI) ->
 
 %% HELPER functions
 
-lookup_oauth2_provider(OAuth2ProviderId) ->
+lookup_oauth2_provider_with_token_endpoint(OAuth2ProviderId) ->
+  Config = lookup_oauth2_provider_config(OAuth2ProviderId),
+  OAuthProvider = case Config of
+    {error,_} = Error -> throw(Error);
+    _ -> map_to_oauth_provider(Config)
+  end,
+  case OAuthProvider#oauth_provider.token_endpoint of
+    undefined -> case OAuthProvider#oauth_provider.issuer of
+                  undefined -> {error, invalid_oauth_provider_config};
+                  Issuer -> get_openid_configuration(Issuer, <<>>, [])
+                end;
+    _ -> OAuthProvider
+  end.
+
+lookup_oauth2_provider_config(OAuth2ProviderId) ->
   case application:get_env(rabbitmq_auth_backend_oauth2, oauth2_providers) of
     undefined -> {error, oauth2_provider_not_found};
     {ok, MapOfProviders} when is_map(MapOfProviders) ->
         case maps:get(OAuth2ProviderId, MapOfProviders, undefined) of
           undefined -> {error, oauth2_provider_not_found};
-          Value -> map_to_oauth_provider(Value)
+          Value -> Value
         end;
     _ ->  {error, invalid_oauth2_provider_configuration}
   end.

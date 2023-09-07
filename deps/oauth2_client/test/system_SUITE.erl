@@ -126,7 +126,8 @@ groups() ->
                   auth_server_error,
                   non_json_payload,
 									get_openid_configuration,
-									grants_refresh_token
+									grants_refresh_token,
+									grants_access_token_using_oauth2_provider_id
                  ]},
 		 {http_down, [], [
 									connection_error
@@ -145,7 +146,8 @@ init_per_suite(Config) ->
 			{grants_access_token_with_ssl, ?GRANT_ACCESS_TOKEN},
 			{ssl_connection_error, ?GRANT_ACCESS_TOKEN},
 			{get_openid_configuration, ?GET_OPENID_CONFIGURATION},
-			{grants_refresh_token, ?GRANTS_REFRESH_TOKEN}
+			{grants_refresh_token, ?GRANTS_REFRESH_TOKEN},
+			{grants_access_token_using_oauth2_provider_id, ?GRANT_ACCESS_TOKEN}
 			| Config].
 
 init_per_group(https, Config) ->
@@ -177,9 +179,9 @@ init_per_group(GroupName, Config) ->
 		{oauth_provider, build_http_oauth_provider()} | Config].
 
 init_per_testcase(TestCase, Config) ->
-	OAuthProvider = ?config(oauth_provider),
-	application:set_env(rabbitmq_auth_backend_oauth2, oauth2_providers, ?config(oauth_provider_id, Config),
-		oauth_provider_to_map(OAuthProvider)),
+	OAuthProvider = ?config(oauth_provider, Config),
+	OAuthProviders = #{ ?config(oauth_provider_id, Config) => oauth_provider_to_map(OAuthProvider) },
+	application:set_env(rabbitmq_auth_backend_oauth2, oauth2_providers, OAuthProviders),
 
 	case ?config(group, Config) of
 		http_up ->
@@ -193,7 +195,7 @@ init_per_testcase(TestCase, Config) ->
 
 
 end_per_testcase(_, Config) ->
-	application:unset_env(rabbitmq_auth_backend_oauth2, oauth2_providers, ?config(oauth_provider_id, Config)),
+	application:unset_env(rabbitmq_auth_backend_oauth2, oauth2_providers),
 	case ?config(group, Config) of
 		http_up ->
   		stop_http_auth_server();
@@ -216,7 +218,7 @@ grants_access_token_using_oauth2_provider_id(Config) ->
 		= ?config(grants_access_token, Config),
 
 	{ok, #successful_access_token_response{access_token = AccessToken, token_type = TokenType} } =
-		oauth2_client:get_access_token(?config(oauth_provider, Config), build_access_token_request(Parameters)),
+		oauth2_client:get_access_token(?config(oauth_provider_id, Config), build_access_token_request(Parameters)),
 	?assertEqual(proplists:get_value(token_type, JsonPayload), TokenType),
 	?assertEqual(proplists:get_value(access_token, JsonPayload), AccessToken).
 

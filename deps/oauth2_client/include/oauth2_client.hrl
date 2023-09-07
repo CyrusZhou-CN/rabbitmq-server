@@ -41,8 +41,8 @@
 -define(RESPONSE_JWKS_URI, <<"jwks_uri">>).
 
 -record(oauth_provider, {
-  issuer :: uri_string:uri_string(),
-  token_endpoint :: uri_string:uri_string(),
+  issuer :: uri_string:uri_string() | undefined,
+  token_endpoint :: uri_string:uri_string() | undefined,
   authorization_endpoint :: uri_string:uri_string() | undefined,
   jwks_uri :: uri_string:uri_string() | undefined,
   ssl_options :: list() | undefined

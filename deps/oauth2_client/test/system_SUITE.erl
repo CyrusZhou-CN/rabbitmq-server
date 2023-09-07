@@ -129,7 +129,7 @@ groups() ->
 									grants_refresh_token
                  ]},
 		 {http_down, [], [
-									connection_error								
+									connection_error
 								 ]},
      {https, [], [
 		 							grants_access_token_with_ssl,
@@ -156,6 +156,7 @@ init_per_group(https, Config) ->
 	CaCertFile = filename:join([CertsDir, "testca", "cacert.pem"]),
 	WrongCaCertFile = filename:join([CertsDir, "server", "server.pem"]),
 	[{group, https},
+		{oauth_provider_id, <<"uaa">>},
 		{oauth_provider, build_https_oauth_provider(CaCertFile)},
 		{issuer, build_issuer("https")},
 		{oauth_provider_with_wrong_ca, build_https_oauth_provider(WrongCaCertFile)} |
@@ -165,15 +166,21 @@ init_per_group(http_up, Config) ->
 	{ok, _} = application:ensure_all_started(inets),
   application:ensure_all_started(cowboy),
 	[{group, http_up},
+		{oauth_provider_id, <<"uaa">>},
 		{issuer, build_issuer("http")},
 		{oauth_provider, build_http_oauth_provider()} | Config];
 
 init_per_group(GroupName, Config) ->
 	[{group, GroupName},
 		{openiissuerd_configuration_uri, build_issuer("http")},
+		{oauth_provider_id, <<"uaa">>},
 		{oauth_provider, build_http_oauth_provider()} | Config].
 
 init_per_testcase(TestCase, Config) ->
+	OAuthProvider = ?config(oauth_provider),
+	application:set_env(rabbitmq_auth_backend_oauth2, oauth2_providers, ?config(oauth_provider_id, Config),
+		oauth_provider_to_map(OAuthProvider)),
+
 	case ?config(group, Config) of
 		http_up ->
 			start_http_oauth_server(?AUTH_PORT, ?config(TestCase, Config));
@@ -186,6 +193,7 @@ init_per_testcase(TestCase, Config) ->
 
 
 end_per_testcase(_, Config) ->
+	application:unset_env(rabbitmq_auth_backend_oauth2, oauth2_providers, ?config(oauth_provider_id, Config)),
 	case ?config(group, Config) of
 		http_up ->
   		stop_http_auth_server();
@@ -200,6 +208,17 @@ end_per_group(_, Config) ->
 
 end_per_suite(Config) ->
   Config.
+
+
+grants_access_token_using_oauth2_provider_id(Config) ->
+	#{request := #{parameters := Parameters},
+	  response := [ {code, 200}, {content_type, _CT}, {payload, JsonPayload}] }
+		= ?config(grants_access_token, Config),
+
+	{ok, #successful_access_token_response{access_token = AccessToken, token_type = TokenType} } =
+		oauth2_client:get_access_token(?config(oauth_provider, Config), build_access_token_request(Parameters)),
+	?assertEqual(proplists:get_value(token_type, JsonPayload), TokenType),
+	?assertEqual(proplists:get_value(access_token, JsonPayload), AccessToken).
 
 grants_access_token(Config) ->
   #{request := #{parameters := Parameters},
@@ -306,6 +325,9 @@ build_https_oauth_provider(CaCertFile) ->
 	  token_endpoint = build_token_endpoint_uri("https"),
 		ssl_options = ssl_options(verify_peer, false, CaCertFile)
 	}.
+oauth_provider_to_map(#oauth_provider{ issuer = Issuer, token_endpoint = TokenEndpoint,
+	ssl_options = SslOptions}) ->
+	#{ <<"issuer">> => Issuer, <<"token_endpoint">> => TokenEndpoint, <<"ssl_options">> => SslOptions}.
 
 start_http_oauth_server(Port, Expectations) when is_list(Expectations) ->
 	Dispatch = cowboy_router:compile([{'_',

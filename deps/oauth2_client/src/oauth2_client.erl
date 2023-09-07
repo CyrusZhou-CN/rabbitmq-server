@@ -6,9 +6,11 @@
 -include("oauth2_client.hrl").
 -define(APP, auth_aouth2).
 
-
--spec get_access_token(oauth_provider(), access_token_request()) ->
+-spec get_access_token(oauth_provider_id() | oauth_provider(), access_token_request()) ->
   {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.
+get_access_token(OAuth2ProviderId, Request) when is_binary(OAuth2ProviderId) ->
+  get_access_token(lookup_oauth2_provider(OAuth2ProviderId), Request);
+
 get_access_token(OAuthProvider, Request) ->
   URL = OAuthProvider#oauth_provider.token_endpoint,
   Header = [],
@@ -50,6 +52,17 @@ get_openid_configuration(IssuerURI) ->
 
 
 %% HELPER functions
+
+lookup_oauth2_provider(OAuth2ProviderId) ->
+  case application:get_env(rabbitmq_auth_backend_oauth2, oauth2_providers) of
+    undefined -> {error, oauth2_provider_not_found};
+    {ok, MapOfProviders} when is_map(MapOfProviders) ->
+        case maps:get(OAuth2ProviderId, MapOfProviders, undefined) of
+          undefined -> {error, oauth2_provider_not_found};
+          Value -> map_to_oauth_provider(Value)
+        end;
+    _ ->  {error, invalid_oauth2_provider_configuration}
+  end.
 
 build_access_token_request_body(Request) ->
   uri_string:compose_query([

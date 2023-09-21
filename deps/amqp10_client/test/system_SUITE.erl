@@ -46,6 +46,7 @@ groups() ->
      {rabbitmq_strict, [], [
                             basic_roundtrip_tls,
                             open_connection_plain_sasl,
+                            open_connection_plain_credentials_fun_sasl,
                             open_connection_plain_sasl_failure,
                             open_connection_plain_sasl_parse_uri
                            ]},
@@ -204,6 +205,24 @@ open_connection_plain_sasl(Config) ->
                 notify => self(),
                 container_id => <<"open_connection_plain_sasl_container">>,
                 sasl =>  ?config(sasl, Config)},
+    {ok, Connection} = amqp10_client:open_connection(OpnConf),
+    receive
+        {amqp10_event, {connection, Connection, opened}} -> ok
+    after 5000 -> exit(connection_timeout)
+    end,
+    ok = amqp10_client:close_connection(Connection).
+
+open_connection_plain_credentials_fun_sasl(Config) ->
+    Hostname = ?config(rmq_hostname, Config),
+    Port = rabbit_ct_broker_helpers:get_node_config(Config, 0, tcp_port_amqp),
+    %% single address
+    {plain, User, Pass} = ?config(sasl, Config),
+
+    OpnConf = #{address => Hostname,
+                port => Port,
+                notify => self(),
+                container_id => <<"open_connection_plain_sasl_container">>,
+                sasl =>  {plain, fun() -> {User, Pass} end }  },
     {ok, Connection} = amqp10_client:open_connection(OpnConf),
     receive
         {amqp10_event, {connection, Connection, opened}} -> ok

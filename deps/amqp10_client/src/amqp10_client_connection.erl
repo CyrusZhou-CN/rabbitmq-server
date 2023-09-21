@@ -53,6 +53,7 @@
 -type milliseconds() :: non_neg_integer().
 
 -type address() :: inet:socket_address() | inet:hostname().
+-type plainCredentialsFunc() :: fun(()->{binary(), binary()}).
 
 -type connection_config() ::
     #{container_id => binary(), % AMQP container id
@@ -70,7 +71,7 @@
       % set to a negative value to allow a sender to "overshoot" the flow
       % control by this margin
       transfer_limit_margin => 0 | neg_integer(),
-      sasl => none | anon | {plain, User :: binary(), Pwd :: binary()},
+      sasl => none | anon | {plain, User :: binary(), Pwd :: binary()} | {plain, PlainResolverFun :: plainCredentialsFunc()},
       notify => pid(),
       notify_when_opened => pid() | none,
       notify_when_closed => pid() | none
@@ -397,7 +398,10 @@ send_sasl_init(State, {plain, User, Pass}) ->
     Response = <<0:8, User/binary, 0:8, Pass/binary>>,
     Frame = #'v1_0.sasl_init'{mechanism = {symbol, <<"PLAIN">>},
                               initial_response = {binary, Response}},
-    send(Frame, 1, State).
+    send(Frame, 1, State);
+send_sasl_init(State, {plain, PlainCredentialsFunc}) ->
+    {User, Pass} = PlainCredentialsFunc(),
+    send_sasl_init(State, {plain, User, Pass}).
 
 send(Record, FrameType, #state{socket = Socket}) ->
     Encoded = amqp10_framing:encode_bin(Record),
@@ -485,6 +489,7 @@ translate_err(#'v1_0.error'{condition = Cond, description = Desc}) ->
 amqp10_event(Evt) ->
     {amqp10_event, {connection, self(), Evt}}.
 
+sasl_to_bin({plain, _}) -> <<"PLAIN">>;
 sasl_to_bin({plain, _, _}) -> <<"PLAIN">>;
 sasl_to_bin(anon) -> <<"ANONYMOUS">>.
 

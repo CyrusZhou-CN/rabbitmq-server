@@ -19,8 +19,11 @@ get_access_token(OAuthProvider, Request) ->
   HTTPOptions = get_ssl_options_if_any(OAuthProvider) ++
     get_timeout_of_default(Request#access_token_request.timeout),
   Options = [],
+  rabbit_log:debug("get_access_token URL:~p", [URL]),
   Response = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
-  parse_access_token_response(Response).
+  ParsedResponse = parse_access_token_response(Response),
+  rabbit_log:debug("get_access_token ParsedResponse:~p", [ParsedResponse]),
+  ParsedResponse.
 
 -spec refresh_access_token(oauth_provider(), refresh_token_request()) ->
   {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.

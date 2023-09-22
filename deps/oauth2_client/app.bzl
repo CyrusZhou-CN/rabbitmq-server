@@ -10,7 +10,6 @@ def all_beam_files(name = "all_beam_files"):
         name = "other_beam",
         srcs = [
             "src/oauth2_client.erl",
-            "src/oauth2_client_app.erl",
         ],
         hdrs = [":public_and_private_hdrs"],
         app_name = "rabbitmq_oauth2_client",
@@ -29,7 +28,6 @@ def all_test_beam_files(name = "all_test_beam_files"):
         testonly = True,
         srcs = [
             "src/oauth2_client.erl",
-            "src/oauth2_client_app.erl",
         ],
         hdrs = [":public_and_private_hdrs"],
         app_name = "rabbitmq_oauth2_client",
@@ -53,8 +51,7 @@ def all_srcs(name = "all_srcs"):
     filegroup(
         name = "srcs",
         srcs = [
-            "src/oauth2_client.erl",
-            "src/oauth2_client_app.erl",
+            "src/oauth2_client.erl",            
         ],
     )
     filegroup(

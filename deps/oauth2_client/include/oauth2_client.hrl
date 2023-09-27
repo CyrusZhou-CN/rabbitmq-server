@@ -39,6 +39,8 @@
 -define(RESPONSE_TOKEN_ENDPOINT, <<"token_endpoint">>).
 -define(RESPONSE_AUTHORIZATION_ENDPOINT, <<"authorization_endpoint">>).
 -define(RESPONSE_JWKS_URI, <<"jwks_uri">>).
+-define(RESPONSE_SSL_OPTIONS, <<"ssl_options">>).
+
 
 -record(oauth_provider, {
   issuer :: uri_string:uri_string() | undefined,

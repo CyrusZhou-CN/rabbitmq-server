@@ -9,9 +9,12 @@
 -spec get_access_token(oauth_provider_id() | oauth_provider(), access_token_request()) ->
   {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.
 get_access_token(OAuth2ProviderId, Request) when is_binary(OAuth2ProviderId) ->
+  rabbit_log:debug("get_access_token OAuth2ProviderId:~p Request:~p env(rabbitmq_auth_backend_oauth2):~p",
+    [OAuth2ProviderId, Request, application:get_all_env(rabbitmq_auth_backend_oauth2)]),
   get_access_token(lookup_oauth2_provider_with_token_endpoint(OAuth2ProviderId), Request);
 
 get_access_token(OAuthProvider, Request) ->
+  rabbit_log:debug("get_access_token OAuthProvider:~p Request:~p", [OAuthProvider, Request]),
   URL = OAuthProvider#oauth_provider.token_endpoint,
   Header = [],
   Type = ?CONTENT_URLENCODED,
@@ -19,7 +22,7 @@ get_access_token(OAuthProvider, Request) ->
   HTTPOptions = get_ssl_options_if_any(OAuthProvider) ++
     get_timeout_of_default(Request#access_token_request.timeout),
   Options = [],
-  rabbit_log:debug("get_access_token URL:~p", [URL]),
+  rabbit_log:debug("get_access_token URL:~p using httpOptions: ~p", [URL, HTTPOptions]),
   Response = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
   ParsedResponse = parse_access_token_response(Response),
   rabbit_log:debug("get_access_token ParsedResponse:~p", [ParsedResponse]),
@@ -58,10 +61,12 @@ get_openid_configuration(IssuerURI) ->
 
 lookup_oauth2_provider_with_token_endpoint(OAuth2ProviderId) ->
   Config = lookup_oauth2_provider_config(OAuth2ProviderId),
+  rabbit_log:debug("Found oauth2_provider: ~p ", [Config]),
   OAuthProvider = case Config of
     {error,_} = Error -> throw(Error);
     _ -> map_to_oauth_provider(Config)
   end,
+  rabbit_log:debug("Found oauth_provider: ~p ", [OAuthProvider]),
   case OAuthProvider#oauth_provider.token_endpoint of
     undefined -> case OAuthProvider#oauth_provider.issuer of
                   undefined -> {error, invalid_oauth_provider_config};
@@ -74,6 +79,7 @@ lookup_oauth2_provider_config(OAuth2ProviderId) ->
   case application:get_env(rabbitmq_auth_backend_oauth2, oauth2_providers) of
     undefined -> {error, oauth2_provider_not_found};
     {ok, MapOfProviders} when is_map(MapOfProviders) ->
+        rabbit_log:debug("Map of providers: ~p ", [MapOfProviders]),
         case maps:get(OAuth2ProviderId, MapOfProviders, undefined) of
           undefined -> {error, oauth2_provider_not_found};
           Value -> Value
@@ -155,7 +161,8 @@ map_to_oauth_provider(Json) ->
     issuer=maps:get(?RESPONSE_ISSUER, Json),
     token_endpoint=maps:get(?RESPONSE_TOKEN_ENDPOINT, Json),
     authorization_endpoint=maps:get(?RESPONSE_AUTHORIZATION_ENDPOINT, Json, undefined),
-    jwks_uri=maps:get(?RESPONSE_JWKS_URI, Json, undefined)
+    jwks_uri=maps:get(?RESPONSE_JWKS_URI, Json, undefined),
+    ssl_options=maps:get(?RESPONSE_SSL_OPTIONS, Json, undefined)
   }.
 
 enrich_oauth_provider({ok, OAuthProvider}, TLSOptions) ->

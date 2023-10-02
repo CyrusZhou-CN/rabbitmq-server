@@ -294,7 +294,7 @@ erlang_package.git_package(
 erlang_package.git_package(
     name = "khepri_mnesia_migration",
     build_file = "@rabbitmq-server//bazel:BUILD.khepri_mnesia_migration",
-    commit = "ec891800b449f6a8fc975f959447039b3df343ed",
+    commit = "43c21d56e07f131dbbb8e23401da58e4d1ee8c20",
     repository = "rabbitmq/khepri_mnesia_migration",
 )
 

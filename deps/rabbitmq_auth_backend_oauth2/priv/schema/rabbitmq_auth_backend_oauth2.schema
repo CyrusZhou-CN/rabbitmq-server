@@ -101,6 +101,8 @@
     [list_to_binary(V) || {_, V} <- Settings]
  end}.
 
+
+
 %% ID of the default signing key
 %%
 %% {default_key, <<"key-1">>},
@@ -192,4 +194,87 @@
  fun(Conf) ->
      Settings = cuttlefish_variable:filter_by_prefix("auth_oauth2.algorithms", Conf),
      [list_to_binary(V) || {_, V} <- Settings]
+ end}.
+
+{mapping,
+  "auth_oauth2.oauth_providers.$name.issuer",
+  "rabbitmq_auth_backend_oauth2.oauth_providers",
+  [{datatype, string}, {validators, ["uri", "https_uri"]}]
+}.
+
+{mapping,
+  "auth_oauth2.oauth_providers.$name.token_endpoint",
+  "rabbitmq_auth_backend_oauth2.oauth_providers",
+  [{datatype, string}, {validators, ["uri", "https_uri"]}]
+}.
+
+{mapping,
+ "auth_oauth2.oauth_providers.$name.jwks_url",
+ "rabbitmq_auth_backend_oauth2.oauth_providers",
+ [{datatype, string}, {validators, ["uri", "https_uri"]}]
+}.
+
+{mapping,
+ "auth_oauth2.resource_servers.$name.ssl_options.peer_verification",
+ "rabbitmq_auth_backend_oauth2.oauth_providers",
+ [{datatype, {enum, [verify_peer, verify_none]}}]}.
+
+{mapping,
+ "auth_oauth2.resource_servers.$name.ssl_options.cacertfile",
+ "rabbitmq_auth_backend_oauth2.oauth_providers",
+ [{datatype, file}, {validators, ["file_accessible"]}]}.
+
+{mapping,
+ "auth_oauth2.resource_servers.$name.ssl_options.depth",
+ "rabbitmq_auth_backend_oauth2.oauth_providers",
+ [{datatype, integer}]}.
+
+{mapping,
+ "auth_oauth2.resource_servers.$name.ssl_options.hostname_verification",
+ "rabbitmq_auth_backend_oauth2.oauth_providers",
+ [{datatype, {enum, [wildcard, none]}}]}.
+
+{mapping,
+ "auth_oauth2.resource_servers.$name.ssl_options.crl_check",
+ "rabbitmq_auth_backend_oauth2.oauth_providers",
+ [{datatype, {enum, [true, false, peer, best_effort]}}]}.
+
+{mapping,
+ "auth_oauth2.oauth_providers.$name.ssl_options.fail_if_no_peer_cert",
+ "rabbitmq_auth_backend_oauth2.oauth_providers",
+ [{datatype, {enum, [true, false]}}]}.
+
+{translation, "rabbitmq_auth_backend_oauth2.oauth_providers",
+ fun(Conf) ->
+    Settings = cuttlefish_variable:filter_by_prefix("auth_oauth2.oauth_providers", Conf),
+    cuttlefish:warn(io:format("Settings: ~p", [Settings])),
+    AuthBackends  = [{Name, {list_to_atom(Key), list_to_binary(V)}} || {["auth_oauth2","oauth_providers", Name, Key], V} <- Settings, Key =/= "jwks_url" ],
+    AuthBackendsHttp  = [{Name, {key_config, {list_to_atom(Key), V}}} || {["auth_oauth2","oauth_providers", Name, "ssl_options", Key], V} <- Settings]
+      ++ [{Name, {key_config, {jwks_url, V} }} || {["auth_oauth2","oauth_providers", Name, "jwks_url"], V} <- Settings ],
+    KeyFun = fun({Name,_}) -> list_to_binary(Name) end,
+    ValueFun = fun({_,V}) -> V end,
+    NewGroup = maps:groups_from_list(KeyFun, ValueFun, AuthBackends ++ AuthBackendsHttp),
+    ListOrSingleFun = fun(K, List) ->
+      case K of
+        key_config -> proplists:get_all_values(K, List);
+        _ ->
+          case proplists:lookup_all(K, List) of
+            [One] -> proplists:get_value(K, List);
+            [One|_] = V -> V
+          end
+      end
+    end,
+    GroupKeyConfigFun = fun(K, List) ->
+        ListKeys = proplists:get_keys(List),
+        [ {K,ListOrSingleFun(K,List)} || K <- ListKeys ]
+     end,
+    NewGroupTwo = maps:map(GroupKeyConfigFun, NewGroup),
+    IndexByIdOrElseNameFun = fun(K, V, NewMap) ->
+      case proplists:get_value(id, V) of
+        undefined -> maps:put(K, V, NewMap);
+        ID -> maps:put(ID, V, NewMap)
+      end
+    end,
+    maps:fold(IndexByIdOrElseNameFun,#{}, NewGroupTwo)
+
  end}.

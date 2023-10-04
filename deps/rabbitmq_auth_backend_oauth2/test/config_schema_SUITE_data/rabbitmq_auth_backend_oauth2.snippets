@@ -58,7 +58,10 @@
         auth_oauth2.preferred_username_claims.2 = username
         auth_oauth2.preferred_username_claims.3 = email
         auth_oauth2.verify_aud = true
-        auth_oauth2.oauth_providers.uaa.issuer = https://uaa",
+        auth_oauth2.oauth_providers.uaa.issuer = https://uaa
+        auth_oauth2.oauth_providers.keycloak.token_endpoint = https://keycloak/token
+        auth_oauth2.oauth_providers.keycloak.jwks_url = https://keycloak/keys
+        ",
         [
         {rabbitmq_auth_backend_oauth2, [
             {resource_server_id,<<"new_resource_server_id">>},
@@ -71,7 +74,12 @@
               #{
                 <<"uaa">> => [
                   {issuer, <<"https://uaa">>}
+                ],
+                <<"keycloak">> => [
+                  {token_endpoint, <<"https://keycloak/token">>},
+                  {jwks_url, <<"https://keycloak/keys">>}
                 ]
+
               }
             }
         ]}

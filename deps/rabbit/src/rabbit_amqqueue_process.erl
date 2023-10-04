@@ -20,6 +20,7 @@
 
 -export([init_with_backing_queue_state/7]).
 
+-export([start_link/2]).
 -export([init/1, terminate/2, code_change/3, handle_call/3, handle_cast/2,
          handle_info/2, handle_pre_hibernate/1, prioritise_call/4,
          prioritise_cast/3, prioritise_info/3, format_message_queue/2]).
@@ -140,6 +141,25 @@ info_keys()       -> ?INFO_KEYS       ++ rabbit_backing_queue:info_keys().
 statistics_keys() -> ?STATISTICS_KEYS ++ rabbit_backing_queue:info_keys().
 
 %%----------------------------------------------------------------------------
+
+-spec start_link(amqqueue:amqqueue(), pid())
+                      -> rabbit_types:ok_pid_or_error().
+
+start_link(Q, Marker) ->
+    gen_server2:start_link(?MODULE, {Q, Marker}, []).
+
+init({Q, Marker}) ->
+    case is_process_alive(Marker) of
+        true  ->
+            %% start
+            init(Q);
+        false ->
+            %% restart
+            QueueName = amqqueue:get_name(Q),
+            rabbit_log:error("Restarting crashed ~ts.", [rabbit_misc:rs(QueueName)]),
+            gen_server2:cast(self(), init),
+            init(Q)
+    end;
 
 init(Q) ->
     process_flag(trap_exit, true),
@@ -1286,17 +1306,7 @@ prioritise_info(Msg, _Len, #q{q = Q}) ->
     end.
 
 handle_call({init, Recover}, From, State) ->
-    try
-	init_it(Recover, From, State)
-    catch
-	{coordinator_not_started, Reason} ->
-	    %% The GM can shutdown before the coordinator has started up
-	    %% (lost membership or missing group), thus the start_link of
-	    %% the coordinator returns {error, shutdown} as rabbit_amqqueue_process
-	    %% is trapping exists. The master captures this return value and
-	    %% throws the current exception.
-	    {stop, Reason, State}
-    end;
+    init_it(Recover, From, State);
 
 handle_call(info, _From, State) ->
     reply({ok, infos(info_keys(), State)}, State);
@@ -1539,17 +1549,7 @@ maybe_notify_consumer_updated(#q{single_active_consumer_on = true} = State, _Pre
     end.
 
 handle_cast(init, State) ->
-    try
-	init_it({no_barrier, non_clean_shutdown}, none, State)
-    catch
-	{coordinator_not_started, Reason} ->
-	    %% The GM can shutdown before the coordinator has started up
-	    %% (lost membership or missing group), thus the start_link of
-	    %% the coordinator returns {error, shutdown} as rabbit_amqqueue_process
-	    %% is trapping exists. The master captures this return value and
-	    %% throws the current exception.
-	    {stop, Reason, State}
-    end;
+    init_it({no_barrier, non_clean_shutdown}, none, State);
 
 handle_cast({run_backing_queue, Mod, Fun},
             State = #q{backing_queue = BQ, backing_queue_state = BQS}) ->

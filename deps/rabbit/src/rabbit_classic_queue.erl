@@ -85,7 +85,7 @@ declare(Q, Node) when ?amqqueue_is_classic(Q) ->
     case rabbit_vhost_sup_sup:get_vhost_sup(VHost, Node2) of
         {ok, _} ->
             gen_server2:call(
-              rabbit_amqqueue_sup_sup:start_queue_process(Node2, Q, declare),
+              rabbit_amqqueue_sup_sup:start_queue_process(Node2, Q),
               {init, new}, infinity);
         {error, Error} ->
             {protocol_error, internal_error, "Cannot declare a queue '~ts' on node '~ts': ~255p",
@@ -505,7 +505,7 @@ delete_crashed_in_backing_queue(Q) ->
 recover_durable_queues(QueuesAndRecoveryTerms) ->
     {Results, Failures} =
         gen_server2:mcall(
-          [{rabbit_amqqueue_sup_sup:start_queue_process(node(), Q, recovery),
+          [{rabbit_amqqueue_sup_sup:start_queue_process(node(), Q),
             {init, {self(), Terms}}} || {Q, Terms} <- QueuesAndRecoveryTerms]),
     [rabbit_log:error("Queue ~tp failed to initialise: ~tp",
                       [Pid, Error]) || {Pid, Error} <- Failures],

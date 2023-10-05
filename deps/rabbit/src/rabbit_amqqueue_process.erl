@@ -1481,36 +1481,7 @@ handle_call(purge, _From, State = #q{backing_queue       = BQ,
 
 handle_call({requeue, AckTags, ChPid}, From, State) ->
     gen_server2:reply(From, ok),
-    noreply(requeue(AckTags, ChPid, State));
-
-handle_call(sync_mirrors, _From,
-            State = #q{backing_queue       = rabbit_mirror_queue_master,
-                       backing_queue_state = BQS}) ->
-    S = fun(BQSN) -> State#q{backing_queue_state = BQSN} end,
-    HandleInfo = fun (Status) ->
-                         receive {'$gen_call', From, {info, Items}} ->
-                                 Infos = infos(Items, State#q{status = Status}),
-                                 gen_server2:reply(From, {ok, Infos})
-                         after 0 ->
-                                 ok
-                         end
-                 end,
-    EmitStats = fun (Status) ->
-                        rabbit_event:if_enabled(
-                          State, #q.stats_timer,
-                          fun() -> emit_stats(State#q{status = Status}) end)
-                end,
-    case rabbit_mirror_queue_master:sync_mirrors(HandleInfo, EmitStats, BQS) of
-        {ok, BQS1}           -> reply(ok, S(BQS1));
-        {stop, Reason, BQS1} -> {stop, Reason, S(BQS1)}
-    end;
-
-handle_call(sync_mirrors, _From, State) ->
-    reply({error, not_mirrored}, State);
-
-%% By definition if we get this message here we do not have to do anything.
-handle_call(cancel_sync_mirrors, _From, State) ->
-    reply({ok, not_syncing}, State).
+    noreply(requeue(AckTags, ChPid, State)).
 
 new_single_active_consumer_after_basic_cancel(ChPid, ConsumerTag, CurrentSingleActiveConsumer,
             _SingleActiveConsumerIsOn = true, Consumers) ->
@@ -1627,16 +1598,6 @@ handle_cast({set_ram_duration_target, Duration},
 handle_cast({set_maximum_since_use, Age}, State) ->
     ok = file_handle_cache:set_maximum_since_use(Age),
     noreply(State);
-
-handle_cast(update_mirroring, State = #q{q = Q,
-                                         mirroring_policy_version = Version}) ->
-    case needs_update_mirroring(Q, Version) of
-        false ->
-            noreply(State);
-        {Policy, NewVersion} ->
-            State1 = State#q{mirroring_policy_version = NewVersion},
-            noreply(update_mirroring(Policy, State1))
-    end;
 
 handle_cast({credit, ChPid, CTag, Credit, Drain},
             State = #q{consumers           = Consumers,
@@ -1843,58 +1804,6 @@ log_auto_delete(Reason, #q{ q = Q }) ->
     rabbit_log_queue:debug("Deleting auto-delete queue '~ts' in vhost '~ts' " ++
                            Reason,
                            [QName, VHost]).
-
-needs_update_mirroring(Q, Version) ->
-    {ok, UpQ} = rabbit_amqqueue:lookup(amqqueue:get_name(Q)),
-    DBVersion = amqqueue:get_policy_version(UpQ),
-    case DBVersion > Version of
-        true -> {rabbit_policy:get(<<"ha-mode">>, UpQ), DBVersion};
-        false -> false
-    end.
-
-
-update_mirroring(Policy, State = #q{backing_queue = BQ}) ->
-    case update_to(Policy, BQ) of
-        start_mirroring ->
-            start_mirroring(State);
-        stop_mirroring ->
-            stop_mirroring(State);
-        ignore ->
-            State;
-        update_ha_mode ->
-            update_ha_mode(State)
-    end.
-
-update_to(undefined, rabbit_mirror_queue_master) ->
-    stop_mirroring;
-update_to(_, rabbit_mirror_queue_master) ->
-    update_ha_mode;
-update_to(undefined, BQ) when BQ =/= rabbit_mirror_queue_master ->
-    ignore;
-update_to(_, BQ) when BQ =/= rabbit_mirror_queue_master ->
-    start_mirroring.
-
-start_mirroring(State = #q{backing_queue       = BQ,
-                           backing_queue_state = BQS}) ->
-    %% lookup again to get policy for init_with_existing_bq
-    {ok, Q} = rabbit_amqqueue:lookup(qname(State)),
-    true = BQ =/= rabbit_mirror_queue_master, %% assertion
-    BQ1 = rabbit_mirror_queue_master,
-    BQS1 = BQ1:init_with_existing_bq(Q, BQ, BQS),
-    State#q{backing_queue       = BQ1,
-            backing_queue_state = BQS1}.
-
-stop_mirroring(State = #q{backing_queue       = BQ,
-                          backing_queue_state = BQS}) ->
-    BQ = rabbit_mirror_queue_master, %% assertion
-    {BQ1, BQS1} = BQ:stop_mirroring(BQS),
-    State#q{backing_queue       = BQ1,
-            backing_queue_state = BQS1}.
-
-update_ha_mode(State) ->
-    {ok, Q} = rabbit_amqqueue:lookup(qname(State)),
-    ok = rabbit_mirror_queue_misc:update_mirrors(Q),
-    State.
 
 confirm_to_sender(Pid, QName, MsgSeqNos) ->
     rabbit_classic_queue:confirm_to_sender(Pid, QName, MsgSeqNos).

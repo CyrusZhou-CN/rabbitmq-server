@@ -35,7 +35,6 @@
 -export([notify_down_all/2, notify_down_all/3, activate_limit_all/2, credit/5]).
 -export([on_node_up/1, on_node_down/1]).
 -export([update/2, store_queue/1, update_decorators/2, policy_changed/2]).
--export([update_mirroring/1, sync_mirrors/1, cancel_sync_mirrors/1]).
 -export([emit_unresponsive/6, emit_unresponsive_local/5, is_unresponsive/2]).
 -export([has_synchronised_mirrors_online/1, is_match/2, is_in_virtual_host/2]).
 -export([is_replicated/1, is_exclusive/1, is_not_exclusive/1, is_dead_exclusive/1]).
@@ -1877,29 +1876,6 @@ set_ram_duration_target(QPid, Duration) ->
 
 set_maximum_since_use(QPid, Age) ->
     gen_server2:cast(QPid, {set_maximum_since_use, Age}).
-
--spec update_mirroring(pid()) -> 'ok'.
-
-update_mirroring(QPid) ->
-    ok = delegate:invoke_no_result(QPid, {gen_server2, cast, [update_mirroring]}).
-
--spec sync_mirrors(amqqueue:amqqueue() | pid()) ->
-          'ok' | rabbit_types:error('not_mirrored').
-
-sync_mirrors(Q) when ?is_amqqueue(Q) ->
-    QPid = amqqueue:get_pid(Q),
-    delegate:invoke(QPid, {gen_server2, call, [sync_mirrors, infinity]});
-sync_mirrors(QPid) ->
-    delegate:invoke(QPid, {gen_server2, call, [sync_mirrors, infinity]}).
-
--spec cancel_sync_mirrors(amqqueue:amqqueue() | pid()) ->
-          'ok' | {'ok', 'not_syncing'}.
-
-cancel_sync_mirrors(Q) when ?is_amqqueue(Q) ->
-    QPid = amqqueue:get_pid(Q),
-    delegate:invoke(QPid, {gen_server2, call, [cancel_sync_mirrors, infinity]});
-cancel_sync_mirrors(QPid) ->
-    delegate:invoke(QPid, {gen_server2, call, [cancel_sync_mirrors, infinity]}).
 
 -spec is_replicated(amqqueue:amqqueue()) -> boolean().
 

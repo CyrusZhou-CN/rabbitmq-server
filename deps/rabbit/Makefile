@@ -152,7 +152,7 @@ dep_osiris = git https://github.com/rabbitmq/osiris v1.6.7
 dep_systemd = hex 0.6.1
 
 dep_seshat = git https://github.com/rabbitmq/seshat v0.6.1
-dep_khepri = hex 0.8.0
+dep_khepri = git https://github.com/rabbitmq/khepri_mnesia_migration md-use-cached-leader-for-async-commands
 dep_khepri_mnesia_migration = git https://github.com/rabbitmq/khepri_mnesia_migration main
 
 define usage_xml_to_erl

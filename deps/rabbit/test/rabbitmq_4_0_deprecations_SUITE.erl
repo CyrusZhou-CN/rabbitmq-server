@@ -392,8 +392,10 @@ set_policy_when_cmq_is_permitted_by_default(Config) ->
     end.
 
 set_policy_when_cmq_is_permitted_by_default_mnesia(Config) ->
-    ?assertEqual(
-       ok,
+    ?assertError(
+       {badmatch,
+        {error_string,
+         "Validation failed\n\nClassic mirrored queues have been removed." ++ _}},
        rabbit_ct_broker_helpers:set_ha_policy(
          Config, 0, <<".*">>, <<"all">>)),
 
@@ -402,49 +404,13 @@ set_policy_when_cmq_is_permitted_by_default_mnesia(Config) ->
     ?assert(
        log_file_contains_message(
          Config, NodeA,
-         ["Deprecated features: `classic_queue_mirroring`: Classic mirrored "
-          "queues are deprecated.",
-          "By default, they can still be used for now."])),
-
-    %% Change the advanced configuration file to turn off classic queue
-    %% mirroring.
-    ConfigFilename0 = rabbit_ct_broker_helpers:get_node_config(
-                        Config, NodeA, erlang_node_config_filename),
-    ConfigFilename = ConfigFilename0 ++ ".config",
-    {ok, [ConfigContent0]} = file:consult(ConfigFilename),
-    ConfigContent1 = rabbit_ct_helpers:merge_app_env_in_erlconf(
-                       ConfigContent0,
-                       {rabbit, [{permit_deprecated_features,
-                                  #{classic_queue_mirroring => false}}]}),
-    ConfigContent2 = lists:flatten(io_lib:format("~p.~n", [ConfigContent1])),
-    ok = file:write_file(ConfigFilename, ConfigContent2),
-    ?assertEqual({ok, [ConfigContent1]}, file:consult(ConfigFilename)),
-
-    %% Restart the node and see if it was correctly converted to a disc node.
-    {ok, _} = rabbit_ct_broker_helpers:rabbitmqctl(
-                Config, NodeA, ["stop_app"]),
-    {error, 69, Message} = rabbit_ct_broker_helpers:rabbitmqctl(
-                             Config, NodeA, ["start_app"]),
-    Ret = re:run(
-            Message,
-            ":failed_to_deny_deprecated_features, "
-            "\\[:classic_queue_mirroring\\]",
-            [{capture, none}]),
-    ?assertEqual(match, Ret).
+         ["Deprecated features: `classic_queue_mirroring`: Classic mirrored queues have been removed."])).
 
 set_policy_when_cmq_is_permitted_by_default_khepri(Config) ->
     ?assertError(
        {badmatch,
         {error_string,
-         "Validation failed\n\nClassic mirrored queues are deprecated." ++ _}},
-       rabbit_ct_broker_helpers:set_ha_policy(
-         Config, 0, <<".*">>, <<"all">>)).
-
-set_policy_when_cmq_is_not_permitted_from_conf(Config) ->
-    ?assertError(
-       {badmatch,
-        {error_string,
-         "Validation failed\n\nClassic mirrored queues are deprecated." ++ _}},
+         "Validation failed\n\nClassic mirrored queues have been removed." ++ _}},
        rabbit_ct_broker_helpers:set_ha_policy(
          Config, 0, <<".*">>, <<"all">>)),
 
@@ -453,8 +419,22 @@ set_policy_when_cmq_is_not_permitted_from_conf(Config) ->
     ?assert(
        log_file_contains_message(
          Config, NodeA,
-         ["Deprecated features: `classic_queue_mirroring`: Classic mirrored queues are deprecated.",
-          "Their use is not permitted per the configuration"])).
+         ["Deprecated features: `classic_queue_mirroring`: Classic mirrored queues have been removed."])).
+
+set_policy_when_cmq_is_not_permitted_from_conf(Config) ->
+    ?assertError(
+       {badmatch,
+        {error_string,
+         "Validation failed\n\nClassic mirrored queues have been removed." ++ _}},
+       rabbit_ct_broker_helpers:set_ha_policy(
+         Config, 0, <<".*">>, <<"all">>)),
+
+    [NodeA] = rabbit_ct_broker_helpers:get_node_configs(Config, nodename),
+
+    ?assert(
+       log_file_contains_message(
+         Config, NodeA,
+         ["Deprecated features: `classic_queue_mirroring`: Classic mirrored queues have been removed."])).
 
 %% -------------------------------------------------------------------
 %% Transient non-exclusive queues.

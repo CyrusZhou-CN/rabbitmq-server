@@ -41,7 +41,7 @@
 
 -rabbit_deprecated_feature(
    {classic_queue_mirroring,
-    #{deprecation_phase => permitted_by_default,
+    #{deprecation_phase => removed,
       messages =>
       #{when_permitted =>
         "Classic mirrored queues are deprecated.\n"
@@ -68,7 +68,10 @@
         "To continue using classic mirrored queues when they are not "
         "permitted by default, set the following parameter in your "
         "configuration:\n"
-        "    \"deprecated_features.permit.classic_queue_mirroring = true\""
+        "    \"deprecated_features.permit.classic_queue_mirroring = true\"",
+
+        when_removed =>
+        "Classic mirrored queues have been removed.\n"
        },
       doc_url => "https://blog.rabbitmq.com/posts/2021/08/4.0-deprecation-announcements/#removal-of-classic-queue-mirroring",
       callbacks => #{is_feature_used => {?MODULE, are_cmqs_used}}

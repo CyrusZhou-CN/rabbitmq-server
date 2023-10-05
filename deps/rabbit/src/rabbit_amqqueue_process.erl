@@ -113,9 +113,6 @@
          consumer_utilisation,
          consumer_capacity,
          memory,
-         slave_pids,
-         synchronised_slave_pids,
-         recoverable_slaves,
          state,
          garbage_collection
         ]).
@@ -198,7 +195,7 @@ init_it(Recover, From, State = #q{q = Q0}) ->
                  #q{backing_queue       = undefined,
                     backing_queue_state = undefined,
                     q                   = Q} = State,
-                 BQ = backing_queue_module(Q),
+                 BQ = backing_queue_module(),
                  {_, Terms} = recovery_status(Recover),
                  BQS = bq_init(BQ, Q, Terms),
                  %% Rely on terminate to delete the queue.
@@ -223,7 +220,7 @@ init_it2(Recover, From, State = #q{q                   = Q,
                     ok = rabbit_memory_monitor:register(
                            self(), {rabbit_amqqueue,
                                     set_ram_duration_target, [self()]}),
-                    BQ = backing_queue_module(Q1),
+                    BQ = backing_queue_module(),
                     BQS = bq_init(BQ, Q, TermsOrNew),
                     send_reply(From, {new, Q}),
                     recovery_barrier(Barrier),
@@ -256,8 +253,7 @@ matches(new, Q1, Q2) ->
     amqqueue:is_auto_delete(Q1)      =:= amqqueue:is_auto_delete(Q2)      andalso
     amqqueue:get_exclusive_owner(Q1) =:= amqqueue:get_exclusive_owner(Q2) andalso
     amqqueue:get_arguments(Q1)       =:= amqqueue:get_arguments(Q2)       andalso
-    amqqueue:get_pid(Q1)             =:= amqqueue:get_pid(Q2)             andalso
-    amqqueue:get_slave_pids(Q1)      =:= amqqueue:get_slave_pids(Q2);
+    amqqueue:get_pid(Q1)             =:= amqqueue:get_pid(Q2);
 %% FIXME: Should v1 vs. v2 of the same record match?
 matches(_,  Q,   Q) -> true;
 matches(_, _Q, _Q1) -> false.
@@ -523,12 +519,9 @@ next_state(State = #q{q = Q,
         timed -> {ensure_sync_timer(State1), 0             }
     end.
 
-backing_queue_module(Q) ->
-    case rabbit_mirror_queue_misc:is_mirrored(Q) of
-        false -> {ok, BQM} = application:get_env(backing_queue_module),
-                 BQM;
-        true  -> rabbit_mirror_queue_master
-    end.
+backing_queue_module() ->
+    {ok, BQM} = application:get_env(backing_queue_module),
+    BQM.
 
 ensure_sync_timer(State) ->
     rabbit_misc:ensure_timer(State, #q.sync_timer_ref,
@@ -1167,40 +1160,6 @@ i(consumer_capacity, #q{consumers = Consumers}) ->
 i(memory, _) ->
     {memory, M} = process_info(self(), memory),
     M;
-i(slave_pids, #q{q = Q0}) ->
-    Name = amqqueue:get_name(Q0),
-    case rabbit_amqqueue:lookup(Name) of
-        {ok, Q} ->
-            case rabbit_mirror_queue_misc:is_mirrored(Q) of
-                false -> '';
-                true  -> amqqueue:get_slave_pids(Q)
-            end;
-        {error, not_found} ->
-            ''
-    end;
-i(synchronised_slave_pids, #q{q = Q0}) ->
-    Name = amqqueue:get_name(Q0),
-    case rabbit_amqqueue:lookup(Name) of
-        {ok, Q} ->
-            case rabbit_mirror_queue_misc:is_mirrored(Q) of
-                false -> '';
-                true  -> amqqueue:get_sync_slave_pids(Q)
-            end;
-        {error, not_found} ->
-            ''
-    end;
-i(recoverable_slaves, #q{q = Q0}) ->
-    Name = amqqueue:get_name(Q0),
-    Durable = amqqueue:is_durable(Q0),
-    case rabbit_amqqueue:lookup(Name) of
-        {ok, Q} ->
-            case Durable andalso rabbit_mirror_queue_misc:is_mirrored(Q) of
-                false -> '';
-                true  -> amqqueue:get_recoverable_slaves(Q)
-            end;
-        {error, not_found} ->
-            ''
-    end;
 i(state, #q{status = running}) -> credit_flow:state();
 i(state, #q{status = State})   -> State;
 i(garbage_collection, _State) ->
@@ -1668,14 +1627,7 @@ handle_cast({policy_changed, Q0}, State) ->
             Q2 = amqqueue:set_operator_policy(Q1, amqqueue:get_operator_policy(Q0)),
             Q3 = amqqueue:set_policy_version(Q2, PolicyVersion0),
             noreply(process_args_policy(State#q{q = Q3}))
-    end;
-
-handle_cast({sync_start, _, _}, State = #q{q = Q}) ->
-    Name = amqqueue:get_name(Q),
-    %% Only a mirror should receive this, it means we are a duplicated master
-    rabbit_mirror_queue_misc:log_warning(
-      Name, "Stopping after receiving sync_start from another master", []),
-    stop(State).
+    end.
 
 handle_info({maybe_expire, Vsn}, State = #q{args_policy_version = Vsn}) ->
     case is_unused(State) of
@@ -1774,16 +1726,7 @@ handle_pre_hibernate(State = #q{backing_queue = BQ,
 format_message_queue(Opt, MQ) -> rabbit_misc:format_message_queue(Opt, MQ).
 
 format(Q) when ?is_amqqueue(Q) ->
-    case rabbit_mirror_queue_misc:is_mirrored(Q) of
-        false ->
-            [{node, node(amqqueue:get_pid(Q))}];
-        true ->
-            Slaves = amqqueue:get_slave_pids(Q),
-            SSlaves = amqqueue:get_sync_slave_pids(Q),
-            [{slave_nodes, [node(S) || S <- Slaves]},
-             {synchronised_slave_nodes, [node(S) || S <- SSlaves]},
-             {node, node(amqqueue:get_pid(Q))}]
-    end.
+    [{node, node(amqqueue:get_pid(Q))}].
 
 -spec is_policy_applicable(amqqueue:amqqueue(), any()) -> boolean().
 is_policy_applicable(_Q, _Policy) ->

@@ -547,17 +547,9 @@ with(#resource{} = Name, F, E, RetriesLeft) ->
         %% The queue process has crashed with unknown error
         {ok, Q} when ?amqqueue_state_is(Q, crashed) ->
             E({absent, Q, crashed});
-        %% The queue process has been stopped by a supervisor.
-        %% In that case a synchronised mirror can take over
-        %% so we should retry.
-        {ok, Q} when ?amqqueue_state_is(Q, stopped) ->
-            %% The queue process was stopped by the supervisor
-            rabbit_misc:with_exit_handler(
-              fun () -> retry_wait(Q, F, E, RetriesLeft) end,
-              fun () -> F(Q) end);
         %% The queue is supposed to be active.
-        %% The leader node can go away or queue can be killed
-        %% so we retry, waiting for a mirror to take over.
+        %% The node can go away or queue can be killed so we retry.
+        %% TODO review this: why to retry when mirroring is gone?
         {ok, Q} when ?amqqueue_state_is(Q, live) ->
             %% We check is_process_alive(QPid) in case we receive a
             %% nodedown (for example) in F() that has nothing to do
@@ -582,26 +574,19 @@ retry_wait(Q, F, E, RetriesLeft) ->
     Name = amqqueue:get_name(Q),
     QPid = amqqueue:get_pid(Q),
     QState = amqqueue:get_state(Q),
-    case {QState, is_replicated(Q)} of
-        %% We don't want to repeat an operation if
-        %% there are no mirrors to migrate to
-        {stopped, false} ->
-            E({absent, Q, stopped});
-        _ ->
-            case rabbit_process:is_process_alive(QPid) of
-                true ->
-                    % rabbitmq-server#1682
-                    % The old check would have crashed here,
-                    % instead, log it and run the exit fun. absent & alive is weird,
-                    % but better than crashing with badmatch,true
-                    rabbit_log:debug("Unexpected alive queue process ~tp", [QPid]),
-                    E({absent, Q, alive});
-                false ->
-                    ok % Expected result
-            end,
-            timer:sleep(30),
-            with(Name, F, E, RetriesLeft - 1)
-    end.
+    case rabbit_process:is_process_alive(QPid) of
+        true ->
+            %% rabbitmq-server#1682
+            %% The old check would have crashed here,
+            %% instead, log it and run the exit fun. absent & alive is weird,
+            %% but better than crashing with badmatch,true
+            rabbit_log:debug("Unexpected alive queue process ~tp", [QPid]),
+            E({absent, Q, alive});
+        false ->
+            ok % Expected result
+    end,
+    timer:sleep(30),
+    with(Name, F, E, RetriesLeft - 1).
 
 -spec with(name(), qfun(A)) ->
           A | rabbit_types:error(not_found_or_absent()).

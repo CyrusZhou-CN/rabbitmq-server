@@ -303,7 +303,6 @@ update_decorators(Name, Decorators) ->
 policy_changed(Q1, Q2) ->
     Decorators1 = amqqueue:get_decorators(Q1),
     Decorators2 = amqqueue:get_decorators(Q2),
-    rabbit_mirror_queue_misc:update_mirrors(Q1, Q2),
     D1 = rabbit_queue_decorator:select(Decorators1),
     D2 = rabbit_queue_decorator:select(Decorators2),
     [ok = M:policy_changed(Q1, Q2) || M <- lists:usort(D1 ++ D2)],
@@ -431,9 +430,7 @@ filter_per_type(classic, Q) ->
 rebalance_module(Q) when ?amqqueue_is_quorum(Q) ->
     rabbit_quorum_queue;
 rebalance_module(Q) when ?amqqueue_is_stream(Q) ->
-    rabbit_stream_queue;
-rebalance_module(Q) when ?amqqueue_is_classic(Q) ->
-    rabbit_mirror_queue_misc.
+    rabbit_stream_queue.
 
 get_resource_name(#resource{name = Name}) ->
     Name.
@@ -1756,64 +1753,24 @@ internal_delete(Queue, ActingUser, Reason) ->
 %% Does it make any sense once mnesia is not used/removed?
 forget_all_durable(Node) ->
     UpdateFun = fun(Q) ->
-                        forget_node_for_queue(Node, Q)
+                        forget_node_for_queue(Q)
                 end,
     FilterFun = fun(Q) ->
                         is_local_to_node(amqqueue:get_pid(Q), Node)
                 end,
     rabbit_db_queue:foreach_durable(UpdateFun, FilterFun).
 
-%% Try to promote a mirror while down - it should recover as a
-%% leader. We try to take the oldest mirror here for best chance of
-%% recovery.
-forget_node_for_queue(_DeadNode, Q)
+forget_node_for_queue(Q)
   when ?amqqueue_is_quorum(Q) ->
     ok;
-forget_node_for_queue(_DeadNode, Q)
+forget_node_for_queue(Q)
   when ?amqqueue_is_stream(Q) ->
     ok;
-forget_node_for_queue(DeadNode, Q) ->
-    RS = amqqueue:get_recoverable_slaves(Q),
-    forget_node_for_queue(DeadNode, RS, Q).
-
-forget_node_for_queue(_DeadNode, [], Q) ->
-    %% No mirrors to recover from, queue is gone.
+forget_node_for_queue(Q) ->
     %% Don't process_deletions since that just calls callbacks and we
     %% are not really up.
     Name = amqqueue:get_name(Q),
-    rabbit_db_queue:internal_delete(Name, true, normal);
-
-%% Should not happen, but let's be conservative.
-forget_node_for_queue(DeadNode, [DeadNode | T], Q) ->
-    forget_node_for_queue(DeadNode, T, Q);
-
-forget_node_for_queue(DeadNode, [H|T], Q) when ?is_amqqueue(Q) ->
-    Type = amqqueue:get_type(Q),
-    case {node_permits_offline_promotion(H), Type} of
-        {false, _} -> forget_node_for_queue(DeadNode, T, Q);
-        {true, rabbit_classic_queue} ->
-            Q1 = amqqueue:set_pid(Q, rabbit_misc:node_to_fake_pid(H)),
-            %% rabbit_db_queue:set_many/1 just stores a durable queue record,
-            %% that is the only one required here.
-            %% rabbit_db_queue:set/1 writes both durable and transient, thus
-            %% can't be used for this operation.
-            ok = rabbit_db_queue:set_many([Q1]);
-        {true, rabbit_quorum_queue} ->
-            ok
-    end.
-
-node_permits_offline_promotion(Node) ->
-    case node() of
-        Node -> not rabbit:is_running(); %% [1]
-        _    -> NotRunning = rabbit_nodes:list_not_running(),
-                lists:member(Node, NotRunning) %% [2]
-    end.
-%% [1] In this case if we are a real running node (i.e. rabbitmqctl
-%% has RPCed into us) then we cannot allow promotion. If on the other
-%% hand we *are* rabbitmqctl impersonating the node for offline
-%% node-forgetting then we can.
-%%
-%% [2] This is simpler; as long as it's down that's OK
+    rabbit_db_queue:internal_delete(Name, true, normal).
 
 -spec run_backing_queue
         (pid(), atom(), (fun ((atom(), A) -> {[rabbit_types:msg_id()], A}))) ->
@@ -1835,7 +1792,7 @@ set_maximum_since_use(QPid, Age) ->
 -spec is_replicated(amqqueue:amqqueue()) -> boolean().
 
 is_replicated(Q) when ?amqqueue_is_classic(Q) ->
-    rabbit_mirror_queue_misc:is_mirrored(Q);
+    false;
 is_replicated(_Q) ->
     %% streams and quorum queues are all replicated
     true.
@@ -1856,41 +1813,8 @@ is_dead_exclusive(Q) when ?amqqueue_exclusive_owner_is_pid(Q) ->
 
 -spec on_node_up(node()) -> 'ok'.
 
-on_node_up(Node) ->
-    rabbit_db_queue:foreach_transient(maybe_clear_recoverable_node(Node)).
-
-maybe_clear_recoverable_node(Node) ->
-    fun(Q) ->
-            SPids = amqqueue:get_sync_slave_pids(Q),
-            RSs = amqqueue:get_recoverable_slaves(Q),
-            case lists:member(Node, RSs) of
-                true  ->
-                    %% There is a race with
-                    %% rabbit_mirror_queue_slave:record_synchronised/1 called
-                    %% by the incoming mirror node and this function, called
-                    %% by the leader node. If this function is executed after
-                    %% record_synchronised/1, the node is erroneously removed
-                    %% from the recoverable mirror list.
-                    %%
-                    %% We check if the mirror node's queue PID is alive. If it is
-                    %% the case, then this function is executed after. In this
-                    %% situation, we don't touch the queue record, it is already
-                    %% correct.
-                    DoClearNode =
-                        case [SP || SP <- SPids, node(SP) =:= Node] of
-                            [SPid] -> not rabbit_misc:is_process_alive(SPid);
-                            _      -> true
-                        end,
-                    if
-                        DoClearNode -> RSs1 = RSs -- [Node],
-                                       store_queue(
-                                         amqqueue:set_recoverable_slaves(Q, RSs1));
-                        true        -> ok
-                    end;
-                false ->
-                    ok
-            end
-    end.
+on_node_up(_Node) ->
+    ok.
 
 -spec on_node_down(node()) -> 'ok'.
 

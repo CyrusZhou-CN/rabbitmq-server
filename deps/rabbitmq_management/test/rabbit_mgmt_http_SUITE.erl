@@ -2018,8 +2018,6 @@ queue_purge_test(Config) ->
 
 queue_actions_test(Config) ->
     http_put(Config, "/queues/%2F/q", #{}, {group, '2xx'}),
-    http_post(Config, "/queues/%2F/q/actions", [{action, sync}], {group, '2xx'}),
-    http_post(Config, "/queues/%2F/q/actions", [{action, cancel_sync}], {group, '2xx'}),
     http_post(Config, "/queues/%2F/q/actions", [{action, change_colour}], ?BAD_REQUEST),
     http_delete(Config, "/queues/%2F/q", {group, '2xx'}),
     passed.

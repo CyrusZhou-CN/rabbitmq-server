@@ -30,8 +30,7 @@ groups() ->
     [
      {mnesia_parallel_tests, [parallel], [
           {max_length_classic, [], max_length_tests()},
-          {max_length_quorum, [], max_length_quorum_tests()},
-          {max_length_mirrored, [], max_length_tests()}
+          {max_length_quorum, [], max_length_quorum_tests()}
        ]},
      {khepri_parallel_tests, [parallel], [
           {max_length_classic, [], max_length_tests()},
@@ -80,14 +79,6 @@ init_per_group(max_length_quorum, Config) ->
       Config,
       [{queue_args, [{<<"x-queue-type">>, longstr, <<"quorum">>}]},
        {queue_durable, true}]);
-init_per_group(max_length_mirrored, Config) ->
-    rabbit_ct_broker_helpers:set_ha_policy(Config, 0, <<"^max_length.*queue">>,
-        <<"all">>, [{<<"ha-sync-mode">>, <<"automatic">>}]),
-    Config1 = rabbit_ct_helpers:set_config(
-                Config, [{is_mirrored, true},
-                         {queue_args, [{<<"x-queue-type">>, longstr, <<"classic">>}]},
-                         {queue_durable, false}]),
-    rabbit_ct_helpers:run_steps(Config1, []);
 init_per_group(mnesia_parallel_tests = Group, Config0) ->
     Config = rabbit_ct_helpers:set_config(Config0, [{metadata_store, mnesia}]),
     init_per_group0(Group, Config);
@@ -110,10 +101,6 @@ init_per_group0(Group, Config) ->
             rabbit_ct_helpers:run_steps(Config, [])
     end.
 
-end_per_group(max_length_mirrored, Config) ->
-    rabbit_ct_broker_helpers:clear_policy(Config, 0, <<"^max_length.*queue">>),
-    Config1 = rabbit_ct_helpers:set_config(Config, [{is_mirrored, false}]),
-    Config1;
 end_per_group(queue_max_length, Config) ->
     Config;
 end_per_group(Group, Config) ->

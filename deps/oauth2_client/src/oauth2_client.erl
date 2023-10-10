@@ -128,19 +128,28 @@ get_timeout_of_default(Timeout) ->
     Timeout -> [{timeout, Timeout}]
   end.
 
+is_json(?CONTENT_JSON) -> true;
+is_json(_) -> false.
+
 -spec decode_body(string(), string() | binary() | term()) -> 'false' | 'null' | 'true' |
                                                               binary() | [any()] | number() | map() | {error, term()}.
 
 decode_body(_, []) -> [];
-decode_body(?CONTENT_JSON_WITH_CHARSET, Body) ->
-    decode_body(?CONTENT_JSON, Body);
 decode_body(?CONTENT_JSON, Body) ->
     case rabbit_json:try_decode(rabbit_data_coercion:to_binary(Body)) of
         {ok, Value} ->
             Value;
         {error, _} = Error  ->
             Error
+    end;
+decode_body(MimeType, Body) ->
+    Items = string:split(MimeType, ";"),
+    rabbit_log:debug("checking mimetype ~p -> ~p " , [MimeType, Items]),
+    case lists:any(fun is_json/1, Items) of
+      true -> decode_body(?CONTENT_JSON, Body);
+      false -> {error, mime_type_is_not_json}
     end.
+
 
 map_to_successful_access_token_response(Json) ->
   #successful_access_token_response{

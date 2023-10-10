@@ -14,7 +14,6 @@
 % define access token request constants
 -define(CONTENT_URLENCODED, "application/x-www-form-urlencoded").
 -define(CONTENT_JSON, "application/json").
--define(CONTENT_JSON_WITH_CHARSET, "application/json; charset=utf-8").
 -define(REQUEST_GRANT_TYPE, "grant_type").
 -define(CLIENT_CREDENTIALS_GRANT_TYPE, "client_credentials").
 -define(REFRESH_TOKEN_GRANT_TYPE, "refresh_token").

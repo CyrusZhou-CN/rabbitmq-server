@@ -61,7 +61,8 @@
         auth_oauth2.oauth_providers.uaa.issuer = https://uaa
         auth_oauth2.oauth_providers.keycloak.token_endpoint = https://keycloak/token
         auth_oauth2.oauth_providers.keycloak.jwks_url = https://keycloak/keys
-        ",
+        auth_oauth2.oauth_providers.keycloak.ssl_options.cacertfile = /mnt/certs/ca_certificate.pem
+        auth_oauth2.oauth_providers.keycloak.ssl_options.peer_verification = verify_none",
         [
         {rabbitmq_auth_backend_oauth2, [
             {resource_server_id,<<"new_resource_server_id">>},
@@ -76,8 +77,12 @@
                   {issuer, <<"https://uaa">>}
                 ],
                 <<"keycloak">> => [
+                  {ssl_options, [
+                    {peer_verification, verify_none},
+                    {cacertfile, "/mnt/certs/ca_certificate.pem"}
+                  ]},
                   {token_endpoint, <<"https://keycloak/token">>},
-                  {jwks_url, <<"https://keycloak/keys">>}
+                  {jwks_url, <<"https://keycloak/keys">>}                
                 ]
 
               }

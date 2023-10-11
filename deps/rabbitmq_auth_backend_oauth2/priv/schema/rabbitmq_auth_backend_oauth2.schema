@@ -215,27 +215,27 @@
 }.
 
 {mapping,
- "auth_oauth2.resource_servers.$name.ssl_options.peer_verification",
+ "auth_oauth2.oauth_providers.$name.ssl_options.peer_verification",
  "rabbitmq_auth_backend_oauth2.oauth_providers",
  [{datatype, {enum, [verify_peer, verify_none]}}]}.
 
 {mapping,
- "auth_oauth2.resource_servers.$name.ssl_options.cacertfile",
+ "auth_oauth2.oauth_providers.$name.ssl_options.cacertfile",
  "rabbitmq_auth_backend_oauth2.oauth_providers",
  [{datatype, file}, {validators, ["file_accessible"]}]}.
 
 {mapping,
- "auth_oauth2.resource_servers.$name.ssl_options.depth",
+ "auth_oauth2.oauth_providers.$name.ssl_options.depth",
  "rabbitmq_auth_backend_oauth2.oauth_providers",
  [{datatype, integer}]}.
 
 {mapping,
- "auth_oauth2.resource_servers.$name.ssl_options.hostname_verification",
+ "auth_oauth2.oauth_providers.$name.ssl_options.hostname_verification",
  "rabbitmq_auth_backend_oauth2.oauth_providers",
  [{datatype, {enum, [wildcard, none]}}]}.
 
 {mapping,
- "auth_oauth2.resource_servers.$name.ssl_options.crl_check",
+ "auth_oauth2.oauth_providers.$name.ssl_options.crl_check",
  "rabbitmq_auth_backend_oauth2.oauth_providers",
  [{datatype, {enum, [true, false, peer, best_effort]}}]}.
 
@@ -247,14 +247,18 @@
 {translation, "rabbitmq_auth_backend_oauth2.oauth_providers",
  fun(Conf) ->
     Settings = cuttlefish_variable:filter_by_prefix("auth_oauth2.oauth_providers", Conf),
-    AuthBackends  = [{Name, {list_to_atom(Key), list_to_binary(V)}} || {["auth_oauth2","oauth_providers", Name, Key], V} <- Settings, Key =/= "ssl_options" ],
+    AuthBackends  = [{Name, {list_to_atom(Key), list_to_binary(V)}} || {["auth_oauth2","oauth_providers", Name, Key], V} <- Settings ],
+    SslOptions  = [{Name, {ssl_options, {list_to_atom(Key), V}}} || {["auth_oauth2","oauth_providers", Name, "ssl_options", Key], V} <- Settings ],
 
     KeyFun = fun({Name,_}) -> list_to_binary(Name) end,
     ValueFun = fun({_,V}) -> V end,
-    NewGroup = maps:groups_from_list(KeyFun, ValueFun, AuthBackends),
+    NewGroup = maps:groups_from_list(KeyFun, ValueFun, AuthBackends ++ SslOptions),
+
+    io:format("Setting: ~p AuthBackends:~p SslOptions:~p NewGroup:~p", [Settings, AuthBackends,SslOptions, NewGroup]),
+
     ListOrSingleFun = fun(K, List) ->
       case K of
-        key_config -> proplists:get_all_values(K, List);
+        ssl_options -> proplists:get_all_values(K, List);
         _ ->
           case proplists:lookup_all(K, List) of
             [One] -> proplists:get_value(K, List);

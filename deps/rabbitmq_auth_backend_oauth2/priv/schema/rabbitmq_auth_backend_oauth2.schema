@@ -254,8 +254,6 @@
     ValueFun = fun({_,V}) -> V end,
     NewGroup = maps:groups_from_list(KeyFun, ValueFun, AuthBackends ++ SslOptions),
 
-    io:format("Setting: ~p AuthBackends:~p SslOptions:~p NewGroup:~p", [Settings, AuthBackends,SslOptions, NewGroup]),
-
     ListOrSingleFun = fun(K, List) ->
       case K of
         ssl_options -> proplists:get_all_values(K, List);
@@ -271,6 +269,5 @@
         [ {K,ListOrSingleFun(K,List)} || K <- ListKeys ]
      end,
     maps:map(GroupKeyConfigFun, NewGroup)
-
 
  end}.

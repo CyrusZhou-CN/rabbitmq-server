@@ -181,8 +181,33 @@ map_to_oauth_provider(PropList) when is_list(PropList) ->
     token_endpoint=proplists:get_value(token_endpoint, PropList),
     authorization_endpoint=proplists:get_value(authorization_endpoint, PropList, undefined),
     jwks_uri=proplists:get_value(jwks_uri, PropList, undefined),
-    ssl_options=proplists:get_value(ssl_options, PropList, undefined)
+    ssl_options=map_ssl_options(proplists:get_value(ssl_options, PropList, undefined))
   }.
+
+map_ssl_options(undefined) ->
+  [{verify, verify_none},
+      {depth, 10},
+      {fail_if_no_peer_cert, false},
+      {crl_check, false},
+      {crl_cache, {ssl_crl_cache, {internal, [{http, 10000}]}}}];
+map_ssl_options(Ssl_options) ->
+  Ssl_options1 = [{verify, proplists:get_value(verify, Ssl_options, verify_none)},
+    {depth, proplists:get_value(depth, Ssl_options, 10)},
+    {fail_if_no_peer_cert, proplists:get_value(fail_if_no_peer_cert, Ssl_options, false)},
+    {crl_check, proplists:get_value(crl_check, Ssl_options, false)},
+    {crl_cache, {ssl_crl_cache, {internal, [{http, 10000}]}}} | cacertfile(Ssl_options)],
+  case proplists:get_value(hostname_verification, Ssl_options, none) of
+      wildcard ->
+          [{customize_hostname_check, [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]} | Ssl_options1];
+      none ->
+          Ssl_options1
+  end.
+
+cacertfile(Ssl_options) ->
+  case proplists:get_value(cacertfile, Ssl_options) of
+    undefined -> [];
+    CaCertFile -> [{cacertfile, CaCertFile}]
+  end.
 
 enrich_oauth_provider({ok, OAuthProvider}, TLSOptions) ->
   {ok, OAuthProvider#oauth_provider{ssl_options=TLSOptions}};

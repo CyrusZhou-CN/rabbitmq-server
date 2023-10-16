@@ -8,7 +8,7 @@
 
 % define access token request common constants
 
--define(DEFAULT_HTTP_TIMEOUT, 2250).
+-define(DEFAULT_HTTP_TIMEOUT, 60000).
 -define(DEFAULT_OPENID_CONFIGURATION_PATH, <<"/.well-known/openid-configuration">>).
 
 % define access token request constants

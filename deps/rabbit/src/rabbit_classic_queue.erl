@@ -91,30 +91,32 @@ declare(Q, Node) when ?amqqueue_is_classic(Q) ->
              [rabbit_misc:rs(QName), Node1, Error]}
     end.
 
-delete(Q, IfUnused, IfEmpty, ActingUser) when ?amqqueue_is_classic(Q) ->
-    case wait_for_promoted_or_stopped(Q) of
-        {promoted, Q1} ->
-            QPid = amqqueue:get_pid(Q1),
-            delegate:invoke(QPid, {gen_server2, call,
-                                   [{delete, IfUnused, IfEmpty, ActingUser},
-                                    infinity]});
-        {stopped, Q1} ->
-            #resource{name = Name, virtual_host = Vhost} = amqqueue:get_name(Q1),
-            case IfEmpty of
+delete(Q0, IfUnused, IfEmpty, ActingUser) when ?amqqueue_is_classic(Q0) ->
+    QName = amqqueue:get_name(Q0),
+    case rabbit_amqqueue:lookup(QName) of
+        {ok, Q} ->
+            QPid = amqqueue:get_pid(Q),
+            case rabbit_process:is_process_alive(QPid) of
                 true ->
-                    rabbit_log:error("Queue ~ts in vhost ~ts has its master node down and "
-                                     "no mirrors available or eligible for promotion. "
-                                     "The queue may be non-empty. "
-                                     "Refusing to force-delete.",
-                                     [Name, Vhost]),
-                    {error, not_empty};
+                    delegate:invoke(QPid, {gen_server2, call,
+                                           [{delete, IfUnused, IfEmpty, ActingUser},
+                                            infinity]});
                 false ->
-                    rabbit_log:warning("Queue ~ts in vhost ~ts has its master node is down and "
-                                       "no mirrors available or eligible for promotion. "
-                                       "Forcing queue deletion.",
-                                       [Name, Vhost]),
-                    delete_crashed_internal(Q1, ActingUser),
-                    {ok, 0}
+                    #resource{name = Name, virtual_host = Vhost} = QName,
+                    case IfEmpty of
+                        true ->
+                            rabbit_log:error("Queue ~ts in vhost ~ts is down. "
+                                             "The queue may be non-empty. "
+                                             "Refusing to force-delete.",
+                                             [Name, Vhost]),
+                            {error, not_empty};
+                        false ->
+                            rabbit_log:warning("Queue ~ts in vhost ~ts is down. "
+                                               "Forcing queue deletion.",
+                                               [Name, Vhost]),
+                            delete_crashed_internal(Q, ActingUser),
+                            {ok, 0}
+                    end
             end;
         {error, not_found} ->
             %% Assume the queue was deleted
@@ -350,7 +352,7 @@ deliver(Qs0, Msg0, Options) ->
     Flow = maps:get(flow, Options, noflow),
     Confirm = MsgSeqNo /= undefined,
 
-    {MPids, SPids, Qs} = qpids(Qs0, Confirm, MsgSeqNo),
+    {MPids, Qs} = qpids(Qs0, Confirm, MsgSeqNo),
     Delivery = rabbit_basic:delivery(Mandatory, Confirm, Msg, MsgSeqNo, Flow),
 
     case Flow of
@@ -359,14 +361,11 @@ deliver(Qs0, Msg0, Options) ->
         %% dictionary.
         flow ->
             _ = [credit_flow:send(QPid) || QPid <- MPids],
-            _ = [credit_flow:send(QPid) || QPid <- SPids],
             ok;
         noflow -> ok
     end,
     MMsg = {deliver, Delivery, false},
-    SMsg = {deliver, Delivery, true},
     delegate:invoke_no_result(MPids, {gen_server2, cast, [MMsg]}),
-    delegate:invoke_no_result(SPids, {gen_server2, cast, [SMsg]}),
     {Qs, []}.
 
 -spec dequeue(rabbit_amqqueue:name(), NoAck :: boolean(),
@@ -415,62 +414,27 @@ purge(Q) when ?is_amqqueue(Q) ->
 
 qpids(Qs, Confirm, MsgNo) ->
     lists:foldl(
-      fun ({Q, S0}, {MPidAcc, SPidAcc, Qs0}) ->
+      fun ({Q, S0}, {MPidAcc, Qs0}) ->
               QPid = amqqueue:get_pid(Q),
-              SPids = amqqueue:get_slave_pids(Q),
               QRef = amqqueue:get_name(Q),
               S1 = ensure_monitor(QPid, QRef, S0),
-              S2 = lists:foldl(fun(SPid, Acc) ->
-                                       ensure_monitor(SPid, QRef, Acc)
-                               end, S1, SPids),
               %% confirm record only if necessary
-              S = case S2 of
+              S = case S1 of
                       #?STATE{unconfirmed = U0} ->
-                          Rec = [QPid | SPids],
+                          Rec = [QPid],
                           U = case Confirm of
                                   false ->
                                       U0;
                                   true ->
                                       U0#{MsgNo => #msg_status{pending = Rec}}
                               end,
-                          S2#?STATE{pid = QPid,
+                          S1#?STATE{pid = QPid,
                                     unconfirmed = U};
                       stateless ->
-                          S2
+                          S1
                   end,
-              {[QPid | MPidAcc], SPidAcc ++ SPids,
-               [{Q, S} | Qs0]}
-      end, {[], [], []}, Qs).
-
-%% internal-ish
--spec wait_for_promoted_or_stopped(amqqueue:amqqueue()) ->
-    {promoted, amqqueue:amqqueue()} |
-    {stopped, amqqueue:amqqueue()} |
-    {error, not_found}.
-wait_for_promoted_or_stopped(Q0) ->
-    QName = amqqueue:get_name(Q0),
-    case rabbit_amqqueue:lookup(QName) of
-        {ok, Q} ->
-            QPid = amqqueue:get_pid(Q),
-            SPids = amqqueue:get_slave_pids(Q),
-            case rabbit_process:is_process_alive(QPid) of
-                true  -> {promoted, Q};
-                false ->
-                    case lists:any(fun(Pid) ->
-                                       rabbit_process:is_process_alive(Pid)
-                                   end, SPids) of
-                        %% There is a live slave. May be promoted
-                        true ->
-                            timer:sleep(100),
-                            wait_for_promoted_or_stopped(Q);
-                        %% All slave pids are stopped.
-                        %% No process left for the queue
-                        false -> {stopped, Q}
-                    end
-            end;
-        {error, not_found} ->
-            {error, not_found}
-    end.
+              {[QPid | MPidAcc], [{Q, S} | Qs0]}
+      end, {[], []}, Qs).
 
 -spec delete_crashed(amqqueue:amqqueue()) -> ok.
 delete_crashed(Q) ->

@@ -1489,6 +1489,7 @@ handle_cast({deliver,
              Delivery = #delivery{sender = Sender,
                                   flow   = Flow},
              SlaveWhenPublished},
+            %% TODO SlaveWhenPublished is now always false. No more slaves
             State = #q{senders = Senders}) ->
     Senders1 = case Flow of
     %% In both credit_flow:ack/1 we are acking messages to the channel

@@ -573,7 +573,6 @@ with(#resource{} = Name, F, E, RetriesLeft) ->
 retry_wait(Q, F, E, RetriesLeft) ->
     Name = amqqueue:get_name(Q),
     QPid = amqqueue:get_pid(Q),
-    QState = amqqueue:get_state(Q),
     case rabbit_process:is_process_alive(QPid) of
         true ->
             %% rabbitmq-server#1682

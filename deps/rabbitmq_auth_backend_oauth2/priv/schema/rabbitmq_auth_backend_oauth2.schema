@@ -215,7 +215,7 @@
 }.
 
 {mapping,
- "auth_oauth2.oauth_providers.$name.ssl_options.peer_verification",
+ "auth_oauth2.oauth_providers.$name.ssl_options.verify",
  "rabbitmq_auth_backend_oauth2.oauth_providers",
  [{datatype, {enum, [verify_peer, verify_none]}}]}.
 
@@ -238,11 +238,6 @@
  "auth_oauth2.oauth_providers.$name.ssl_options.crl_check",
  "rabbitmq_auth_backend_oauth2.oauth_providers",
  [{datatype, {enum, [true, false, peer, best_effort]}}]}.
-
-{mapping,
- "auth_oauth2.oauth_providers.$name.ssl_options.fail_if_no_peer_cert",
- "rabbitmq_auth_backend_oauth2.oauth_providers",
- [{datatype, {enum, [true, false]}}]}.
 
 {translation, "rabbitmq_auth_backend_oauth2.oauth_providers",
  fun(Conf) ->

@@ -9,12 +9,13 @@
 -spec get_access_token(oauth_provider_id() | oauth_provider(), access_token_request()) ->
   {ok, successful_access_token_response()} | {error, unsuccessful_access_token_response() | any()}.
 get_access_token(OAuth2ProviderId, Request) when is_binary(OAuth2ProviderId) ->
-  rabbit_log:debug("get_access_token OAuth2ProviderId:~p Request:~p env(rabbitmq_auth_backend_oauth2):~p",
-    [OAuth2ProviderId, Request, application:get_all_env(rabbitmq_auth_backend_oauth2)]),
+  rabbit_log:debug("get_access_token using OAuth2ProviderId:~p and client_id:~p",
+    [OAuth2ProviderId, Request#access_token_request.client_id]),
   get_access_token(lookup_oauth_provider_with_token_endpoint(OAuth2ProviderId), Request);
 
 get_access_token(OAuthProvider, Request) ->
-  rabbit_log:debug("get_access_token OAuthProvider:~p Request:~p", [OAuthProvider, Request]),
+  rabbit_log:debug("get_access_token using OAuthProvider:~p and client_id:~p",
+    [OAuthProvider, Request#access_token_request.client_id]),
   URL = OAuthProvider#oauth_provider.token_endpoint,
   Header = [],
   Type = ?CONTENT_URLENCODED,
@@ -22,7 +23,6 @@ get_access_token(OAuthProvider, Request) ->
   HTTPOptions = get_ssl_options_if_any(OAuthProvider) ++
     get_timeout_of_default(Request#access_token_request.timeout),
   Options = [],
-  rabbit_log:debug("get_access_token URL:~p using httpOptions: ~p", [URL, HTTPOptions]),
   Response = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
   ParsedResponse = parse_access_token_response(Response),
   rabbit_log:debug("get_access_token ParsedResponse:~p", [ParsedResponse]),
@@ -61,12 +61,10 @@ get_openid_configuration(IssuerURI) ->
 
 lookup_oauth_provider_with_token_endpoint(OAuth2ProviderId) ->
   Config = lookup_oauth_provider_config(OAuth2ProviderId),
-  rabbit_log:debug("Found oauth_provider: ~p ", [Config]),
   OAuthProvider = case Config of
     {error,_} = Error -> throw(Error);
     _ -> map_to_oauth_provider(Config)
   end,
-  rabbit_log:debug("Found oauth_provider: ~p ", [OAuthProvider]),
   case OAuthProvider#oauth_provider.token_endpoint of
     undefined -> case OAuthProvider#oauth_provider.issuer of
                   undefined -> {error, invalid_oauth_provider_config};
@@ -79,7 +77,6 @@ lookup_oauth_provider_config(OAuth2ProviderId) ->
   case application:get_env(rabbitmq_auth_backend_oauth2, oauth_providers) of
     undefined -> {error, oauth_provider_not_found};
     {ok, MapOfProviders} when is_map(MapOfProviders) ->
-        rabbit_log:debug("Map of providers: ~p ", [MapOfProviders]),
         case maps:get(OAuth2ProviderId, MapOfProviders, undefined) of
           undefined -> {error, oauth_provider_not_found};
           Value -> Value
@@ -144,7 +141,6 @@ decode_body(?CONTENT_JSON, Body) ->
     end;
 decode_body(MimeType, Body) ->
     Items = string:split(MimeType, ";"),
-    rabbit_log:debug("checking mimetype ~p -> ~p " , [MimeType, Items]),
     case lists:any(fun is_json/1, Items) of
       true -> decode_body(?CONTENT_JSON, Body);
       false -> {error, mime_type_is_not_json}
@@ -165,17 +161,15 @@ map_to_unsuccessful_access_token_response(Json) ->
     error_description=maps:get(?RESPONSE_ERROR_DESCRIPTION, Json, undefined)
   }.
 
-map_to_oauth_provider(Json) when is_map(Json) ->
-  rabbit_log:debug("map_to_oauth_provider map: ~p", [Json]),
+map_to_oauth_provider(Map) when is_map(Map) ->
   #oauth_provider{
-    issuer=maps:get(?RESPONSE_ISSUER, Json),
-    token_endpoint=maps:get(?RESPONSE_TOKEN_ENDPOINT, Json),
-    authorization_endpoint=maps:get(?RESPONSE_AUTHORIZATION_ENDPOINT, Json, undefined),
-    jwks_uri=maps:get(?RESPONSE_JWKS_URI, Json, undefined),
-    ssl_options=maps:get(?RESPONSE_SSL_OPTIONS, Json, undefined)
+    issuer=maps:get(?RESPONSE_ISSUER, Map),
+    token_endpoint=maps:get(?RESPONSE_TOKEN_ENDPOINT, Map),
+    authorization_endpoint=maps:get(?RESPONSE_AUTHORIZATION_ENDPOINT, Map, undefined),
+    jwks_uri=maps:get(?RESPONSE_JWKS_URI, Map, undefined),
+    ssl_options=maps:get(?RESPONSE_SSL_OPTIONS, Map, undefined)
   };
 map_to_oauth_provider(PropList) when is_list(PropList) ->
-  rabbit_log:debug("map_to_oauth_provider propList: ~p", [PropList]),
   #oauth_provider{
     issuer=proplists:get_value(issuer, PropList),
     token_endpoint=proplists:get_value(token_endpoint, PropList),

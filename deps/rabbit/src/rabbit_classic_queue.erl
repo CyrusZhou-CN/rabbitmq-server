@@ -126,12 +126,7 @@ delete(Q0, IfUnused, IfEmpty, ActingUser) when ?amqqueue_is_classic(Q0) ->
 is_recoverable(Q) when ?is_amqqueue(Q) and ?amqqueue_is_classic(Q) ->
     Node = node(),
     Node =:= amqqueue:qnode(Q) andalso
-    %% Terminations on node down will not remove the rabbit_queue
-    %% record if it is a mirrored queue (such info is now obtained from
-    %% the policy). Thus, we must check if the local pid is alive
-    %% - if the record is present - in order to restart.
-    (not rabbit_db_queue:consistent_exists(amqqueue:get_name(Q))
-     orelse not rabbit_process:is_process_alive(amqqueue:get_pid(Q))).
+    (not rabbit_db_queue:consistent_exists(amqqueue:get_name(Q))).
 
 recover(VHost, Queues) ->
     {ok, BQ} = application:get_env(rabbit, backing_queue_module),
@@ -287,21 +282,14 @@ handle_event(QName, {reject_publish, SeqNo, _QPid},
     Actions = [{rejected, QName, Rejected}],
     {ok, State#?STATE{unconfirmed = U}, Actions};
 handle_event(QName, {down, Pid, Info}, #?STATE{monitored = Monitored,
-                                               pid = MasterPid,
                                                unconfirmed = U0} = State0) ->
     State = State0#?STATE{monitored = maps:remove(Pid, Monitored)},
-    Actions0 = case Pid =:= MasterPid of
-                   true ->
-                       [{queue_down, QName}];
-                   false ->
-                       []
-              end,
+    Actions0 = [{queue_down, QName}],
     case rabbit_misc:is_abnormal_exit(Info) of
-        false when Info =:= normal andalso Pid == MasterPid ->
-            %% queue was deleted and masterpid is down
+        false when Info =:= normal ->
+            %% queue was deleted
             {eol, []};
         false ->
-            %% this assumes the mirror isn't part of the active set
             MsgSeqNos = maps:keys(
                           maps:filter(fun (_, #msg_status{pending = Pids}) ->
                                               lists:member(Pid, Pids)
@@ -314,8 +302,7 @@ handle_event(QName, {down, Pid, Info}, #?STATE{monitored = Monitored,
             {ok, State#?STATE{unconfirmed = Unconfirmed}, Actions};
         true ->
             %% any abnormal exit should be considered a full reject of the
-            %% oustanding message ids - If the message didn't get to all
-            %% mirrors we have to assume it will never get there
+            %% oustanding message ids
             MsgIds = maps:fold(
                           fun (SeqNo, Status, Acc) ->
                                   case lists:member(Pid, Status#msg_status.pending) of

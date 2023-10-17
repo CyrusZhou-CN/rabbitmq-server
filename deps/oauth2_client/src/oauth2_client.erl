@@ -43,7 +43,11 @@ refresh_access_token(OAuthProvider, Request) ->
 
 -spec get_openid_configuration(uri_string:uri_string(), erlang:iodata() | <<>>, ssl:tls_option() | []) -> {ok, oauth_provider()} | {error, term()}.
 get_openid_configuration(IssuerURI, OpenIdConfigurationPath, TLSOptions) ->
-  URL = uri_string:resolve(OpenIdConfigurationPath, IssuerURI),
+  URLMap = uri_string:parse(IssuerURI),
+  Path = maps:get(path, URLMap),
+  URL = uri_string:resolve(<<Path/binary, OpenIdConfigurationPath/binary>>, IssuerURI),
+
+  rabbit_log:debug("get_openid_configuration issuer URL ~p (~p)", [URL, TLSOptions]),
   Options = [],
   Response = httpc:request(get, {URL, []}, TLSOptions, Options),
   enrich_oauth_provider(parse_openid_configuration_response(Response), TLSOptions).
@@ -61,14 +65,19 @@ get_openid_configuration(IssuerURI) ->
 
 lookup_oauth_provider_with_token_endpoint(OAuth2ProviderId) ->
   Config = lookup_oauth_provider_config(OAuth2ProviderId),
+  rabbit_log:debug("Found oauth_provider configuration ~p", [Config]),
   OAuthProvider = case Config of
     {error,_} = Error -> throw(Error);
     _ -> map_to_oauth_provider(Config)
   end,
+  rabbit_log:debug("Resolved oauth_provider ~p", [OAuthProvider]),
   case OAuthProvider#oauth_provider.token_endpoint of
     undefined -> case OAuthProvider#oauth_provider.issuer of
                   undefined -> {error, invalid_oauth_provider_config};
-                  Issuer -> get_openid_configuration(Issuer, <<>>, [])
+                  Issuer -> case get_openid_configuration(Issuer, get_ssl_options_if_any(OAuthProvider)) of
+                              {ok, OauthProvider} -> OauthProvider;
+                              {error, _} = Error2 -> Error2
+                            end
                 end;
     _ -> OAuthProvider
   end.
@@ -160,15 +169,31 @@ map_to_unsuccessful_access_token_response(Json) ->
     error=maps:get(?RESPONSE_ERROR, Json),
     error_description=maps:get(?RESPONSE_ERROR_DESCRIPTION, Json, undefined)
   }.
+validate_openid_configuration_payload(Map) ->
+  case maps:is_key(?RESPONSE_ISSUER, Map) of
+    false -> {error, missing_issuer_from_openid_configuration_payload};
+    true ->
+      case maps:is_key(?RESPONSE_TOKEN_ENDPOINT, Map) of
+        false -> {error, missing_token_endpoint_from_openid_configuration_payload};
+        true ->
+          case maps:is_key(?RESPONSE_JWKS_URI, Map) of
+            false -> {error, missing_jwk_uri_from_openid_configuration_payload};
+            true -> ok
+          end
+      end
+  end.
 
 map_to_oauth_provider(Map) when is_map(Map) ->
-  #oauth_provider{
-    issuer=maps:get(?RESPONSE_ISSUER, Map),
-    token_endpoint=maps:get(?RESPONSE_TOKEN_ENDPOINT, Map),
-    authorization_endpoint=maps:get(?RESPONSE_AUTHORIZATION_ENDPOINT, Map, undefined),
-    jwks_uri=maps:get(?RESPONSE_JWKS_URI, Map, undefined),
-    ssl_options=maps:get(?RESPONSE_SSL_OPTIONS, Map, undefined)
-  };
+  case validate_openid_configuration_payload(Map) of
+    ok ->
+      #oauth_provider{
+        issuer=maps:get(?RESPONSE_ISSUER, Map),
+        token_endpoint=maps:get(?RESPONSE_TOKEN_ENDPOINT, Map),
+        authorization_endpoint=maps:get(?RESPONSE_AUTHORIZATION_ENDPOINT, Map, undefined),
+        jwks_uri=maps:get(?RESPONSE_JWKS_URI, Map)
+      };
+    {error, _} = Error -> Error
+  end;
 map_to_oauth_provider(PropList) when is_list(PropList) ->
   #oauth_provider{
     issuer=proplists:get_value(issuer, PropList),

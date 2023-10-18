@@ -37,8 +37,7 @@
             %% This is used to determine when to delete auto-delete queues.
             has_had_consumers,
             %% backing queue module.
-            %% for mirrored queues, this will be rabbit_mirror_queue_master.
-            %% for non-priority and non-mirrored queues, rabbit_variable_queue.
+            %% for non-priority queues, this will be rabbit_variable_queue.
             %% see rabbit_backing_queue.
             backing_queue,
             %% backing queue state.
@@ -1486,8 +1485,7 @@ handle_cast({run_backing_queue, Mod, Fun},
 handle_cast({deliver,
              Delivery = #delivery{sender = Sender,
                                   flow   = Flow},
-             SlaveWhenPublished},
-            %% TODO SlaveWhenPublished is now always false. No more slaves
+             Delivered},
             State = #q{senders = Senders}) ->
     Senders1 = case Flow of
     %% In both credit_flow:ack/1 we are acking messages to the channel
@@ -1498,10 +1496,7 @@ handle_cast({deliver,
                    noflow -> Senders
                end,
     State1 = State#q{senders = Senders1},
-    noreply(maybe_deliver_or_enqueue(Delivery, SlaveWhenPublished, State1));
-%% [0] The second ack is since the channel thought we were a mirror at
-%% the time it published this message, so it used two credits (see
-%% rabbit_queue_type:deliver/2).
+    noreply(maybe_deliver_or_enqueue(Delivery, Delivered, State1));
 
 handle_cast({ack, AckTags, ChPid}, State) ->
     noreply(ack(AckTags, ChPid, State));
@@ -1592,7 +1587,7 @@ handle_cast(notify_decorators, State) ->
 handle_cast(policy_changed, State = #q{q = Q0}) ->
     Name = amqqueue:get_name(Q0),
     %% We depend on the #q.q field being up to date at least WRT
-    %% policy (but not mirror pids) in various places, so when it
+    %% policy in various places, so when it
     %% changes we go and read it from the database again.
     %%
     %% This also has the side effect of waking us up so we emit a
@@ -1604,7 +1599,7 @@ handle_cast({policy_changed, Q0}, State) ->
     Name = amqqueue:get_name(Q0),
     PolicyVersion0 = amqqueue:get_policy_version(Q0),
     %% We depend on the #q.q field being up to date at least WRT
-    %% policy (but not mirror pids) in various places, so when it
+    %% policy in various places, so when it
     %% changes we go and read it from the database again.
     %%
     %% This also has the side effect of waking us up so we emit a
@@ -1615,13 +1610,7 @@ handle_cast({policy_changed, Q0}, State) ->
         true ->
             noreply(process_args_policy(State#q{q = Q}));
         false ->
-            %% Update just the policy, as pids and mirrors could have been
-            %% updated simultaneously. A testcase on the `confirm_rejects_SUITE`
-            %% fails consistently if the internal state is updated directly to `Q0`.
-            Q1 = amqqueue:set_policy(Q, amqqueue:get_policy(Q0)),
-            Q2 = amqqueue:set_operator_policy(Q1, amqqueue:get_operator_policy(Q0)),
-            Q3 = amqqueue:set_policy_version(Q2, PolicyVersion0),
-            noreply(process_args_policy(State#q{q = Q3}))
+            noreply(process_args_policy(State#q{q = Q0}))
     end.
 
 handle_info({maybe_expire, Vsn}, State = #q{args_policy_version = Vsn}) ->

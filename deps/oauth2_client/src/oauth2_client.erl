@@ -41,12 +41,24 @@ refresh_access_token(OAuthProvider, Request) ->
   Response = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
   parse_access_token_response(Response).
 
+append_paths(Path1, Path2) when is_binary(Path1) andalso is_binary(Path2) ->
+  <<Path1/binary, Path2/binary>>;
+append_paths(Path1, Path2) when is_binary(Path1) andalso is_list(Path2) ->
+  Path2Binary = list_to_binary(Path2),
+  <<Path1/binary, Path2Binary/binary>>;
+append_paths(Path1, Path2) when is_list(Path1) andalso is_binary(Path2) ->
+  Path1Binary = list_to_binary(Path1),
+  <<Path1Binary/binary, Path2/binary>>;
+append_paths(Path1, Path2) when is_list(Path1) andalso is_list(Path2) ->
+  Path1Binary = list_to_binary(Path1),
+  Path2Binary = list_to_binary(Path2),
+  <<Path1Binary/binary, Path2Binary/binary>>.
+
 -spec get_openid_configuration(uri_string:uri_string(), erlang:iodata() | <<>>, ssl:tls_option() | []) -> {ok, oauth_provider()} | {error, term()}.
 get_openid_configuration(IssuerURI, OpenIdConfigurationPath, TLSOptions) ->
   URLMap = uri_string:parse(IssuerURI),
-  Path = maps:get(path, URLMap),
-  URL = uri_string:resolve(<<Path/binary, OpenIdConfigurationPath/binary>>, IssuerURI),
-
+  Path = append_paths(maps:get(path, URLMap), OpenIdConfigurationPath),
+  URL = uri_string:resolve(Path, IssuerURI),
   rabbit_log:debug("get_openid_configuration issuer URL ~p (~p)", [URL, TLSOptions]),
   Options = [],
   Response = httpc:request(get, {URL, []}, TLSOptions, Options),
@@ -60,6 +72,51 @@ get_openid_configuration(IssuerURI, TLSOptions) ->
 get_openid_configuration(IssuerURI) ->
   get_openid_configuration(IssuerURI, ?DEFAULT_OPENID_CONFIGURATION_PATH, []).
 
+update_oauth_provider_endpoints_configuration(OAuthProviderId, OAuthProvider) ->
+  LockId = lock(),
+  try do_update_oauth_provider_endpoints_configuration(OAuthProviderId, OAuthProvider) of
+    V -> V
+  after
+    unlock(LockId)
+  end.
+
+do_update_oauth_provider_endpoints_configuration(OAuthProviderId, OAuthProvider) ->
+  OAuthProviders = application:get_env(rabbitmq_auth_backend_oauth2, oauth_providers, #{}),
+  LookupProviderPropList = maps:get(OAuthProviderId, OAuthProviders),
+  ModifiedList0 = case OAuthProvider#oauth_provider.token_endpoint of
+    undefined ->  LookupProviderPropList;
+    TokenEndPoint -> [{token_endpoint, TokenEndPoint} | LookupProviderPropList]
+  end,
+  ModifiedList1 = case OAuthProvider#oauth_provider.authorization_endpoint of
+    undefined ->  ModifiedList0;
+    AuthzEndPoint -> [{authorization_endpoint, AuthzEndPoint} | ModifiedList0]
+  end,
+  ModifiedList2 = case OAuthProvider#oauth_provider.jwks_uri of
+    undefined ->  ModifiedList1;
+    JwksEndPoint -> [{jwks_url, JwksEndPoint} | ModifiedList1]
+  end,
+  ModifiedOAuthProviders = maps:put(OAuthProviderId, ModifiedList2, OAuthProviders),
+  application:set_env(rabbitmq_auth_backend_oauth2, oauth_providers, ModifiedOAuthProviders),
+  rabbit_log:debug("Replacing oauth_providers  ~p", [ ModifiedOAuthProviders]),
+  OAuthProvider.
+
+lock() ->
+    Nodes   = rabbit_nodes:list_running(),
+    Retries = rabbit_nodes:lock_retries(),
+    LockId = case global:set_lock({oauth2_config_lock, rabbitmq_auth_backend_oauth2}, Nodes, Retries) of
+        true  -> rabbitmq_auth_backend_oauth2;
+        false -> undefined
+    end,
+    LockId.
+
+unlock(LockId) ->
+    Nodes = rabbit_nodes:list_running(),
+    case LockId of
+        undefined -> ok;
+        Value     ->
+          global:del_lock({oauth2_config_lock, Value}, Nodes)
+    end,
+    ok.
 
 %% HELPER functions
 
@@ -75,7 +132,7 @@ lookup_oauth_provider_with_token_endpoint(OAuth2ProviderId) ->
     undefined -> case OAuthProvider#oauth_provider.issuer of
                   undefined -> {error, invalid_oauth_provider_config};
                   Issuer -> case get_openid_configuration(Issuer, get_ssl_options_if_any(OAuthProvider)) of
-                              {ok, OauthProvider} -> OauthProvider;
+                              {ok, OauthProvider} -> update_oauth_provider_endpoints_configuration(OAuth2ProviderId, OauthProvider);
                               {error, _} = Error2 -> Error2
                             end
                 end;
@@ -169,6 +226,9 @@ map_to_unsuccessful_access_token_response(Json) ->
     error=maps:get(?RESPONSE_ERROR, Json),
     error_description=maps:get(?RESPONSE_ERROR_DESCRIPTION, Json, undefined)
   }.
+%% According to the specification https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+%% all 3 fields are required. token_endpoint is not required if using implicit flow but
+%% RabbitMQ supports client_credentials and authorization_code with PkCE, not implicit flow.
 validate_openid_configuration_payload(Map) ->
   case maps:is_key(?RESPONSE_ISSUER, Map) of
     false -> {error, missing_issuer_from_openid_configuration_payload};
@@ -177,7 +237,7 @@ validate_openid_configuration_payload(Map) ->
         false -> {error, missing_token_endpoint_from_openid_configuration_payload};
         true ->
           case maps:is_key(?RESPONSE_JWKS_URI, Map) of
-            false -> {error, missing_jwk_uri_from_openid_configuration_payload};
+            false -> {error, missing_jwks_uri_from_openid_configuration_payload};
             true -> ok
           end
       end

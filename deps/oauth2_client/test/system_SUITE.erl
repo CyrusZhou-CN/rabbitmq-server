@@ -25,7 +25,7 @@
 																]},
 															response => [
 																{code, 200},
-																{content_type, ?CONTENT_JSON_WITH_CHARSET},
+																{content_type, ?CONTENT_JSON},
 																{payload, [
 																	{access_token, <<"some access token">>},
 																	{token_type, <<"Bearer">>}
@@ -127,7 +127,8 @@ groups() ->
                   non_json_payload,
 									get_openid_configuration,
 									grants_refresh_token,
-									grants_access_token_using_oauth2_provider_id
+									grants_access_token_using_oauth_provider_id
+
                  ]},
 		 {http_down, [], [
 									connection_error
@@ -139,7 +140,7 @@ groups() ->
     ].
 
 init_per_suite(Config) ->
-    [	{grants_access_token, ?GRANT_ACCESS_TOKEN},
+  [	{grants_access_token, ?GRANT_ACCESS_TOKEN},
 			{denies_access_token, ?DENIES_ACCESS_TOKEN},
 		 	{auth_server_error, ?AUTH_SERVER_ERROR},
 			{non_json_payload, ?NON_JSON_PAYLOAD},
@@ -147,8 +148,12 @@ init_per_suite(Config) ->
 			{ssl_connection_error, ?GRANT_ACCESS_TOKEN},
 			{get_openid_configuration, ?GET_OPENID_CONFIGURATION},
 			{grants_refresh_token, ?GRANTS_REFRESH_TOKEN},
-			{grants_access_token_using_oauth2_provider_id, ?GRANT_ACCESS_TOKEN}
+			{grants_access_token_using_oauth_provider_id, ?GRANT_ACCESS_TOKEN}
+
 			| Config].
+
+end_per_suite(Config) ->
+  Config.
 
 init_per_group(https, Config) ->
 	{ok, _} = application:ensure_all_started(ssl),
@@ -160,6 +165,7 @@ init_per_group(https, Config) ->
 	[{group, https},
 		{oauth_provider_id, <<"uaa">>},
 		{oauth_provider, build_https_oauth_provider(CaCertFile)},
+		{oauth_provider_with_issuer, keep_only_issuer_and_ssl_options(build_https_oauth_provider(CaCertFile))},
 		{issuer, build_issuer("https")},
 		{oauth_provider_with_wrong_ca, build_https_oauth_provider(WrongCaCertFile)} |
 	 	Config0];
@@ -170,18 +176,19 @@ init_per_group(http_up, Config) ->
 	[{group, http_up},
 		{oauth_provider_id, <<"uaa">>},
 		{issuer, build_issuer("http")},
+		{oauth_provider_with_issuer, keep_only_issuer_and_ssl_options(build_http_oauth_provider())},
 		{oauth_provider, build_http_oauth_provider()} | Config];
 
 init_per_group(GroupName, Config) ->
 	[{group, GroupName},
-		{openiissuerd_configuration_uri, build_issuer("http")},
+		{issuer, build_issuer("http")},
 		{oauth_provider_id, <<"uaa">>},
 		{oauth_provider, build_http_oauth_provider()} | Config].
 
 init_per_testcase(TestCase, Config) ->
 	OAuthProvider = ?config(oauth_provider, Config),
-	OAuthProviders = #{ ?config(oauth_provider_id, Config) => oauth_provider_to_map(OAuthProvider) },
-	application:set_env(rabbitmq_auth_backend_oauth2, oauth2_providers, OAuthProviders),
+	OAuthProviders = #{ ?config(oauth_provider_id, Config) => oauth_provider_to_proplist(OAuthProvider) },
+	application:set_env(rabbitmq_auth_backend_oauth2, oauth_providers, OAuthProviders),
 
 	case ?config(group, Config) of
 		http_up ->
@@ -193,9 +200,8 @@ init_per_testcase(TestCase, Config) ->
 	end,
 	Config.
 
-
 end_per_testcase(_, Config) ->
-	application:unset_env(rabbitmq_auth_backend_oauth2, oauth2_providers),
+	application:unset_env(rabbitmq_auth_backend_oauth2, oauth_providers),
 	case ?config(group, Config) of
 		http_up ->
   		stop_http_auth_server();
@@ -205,17 +211,28 @@ end_per_testcase(_, Config) ->
 	end,
 	Config.
 
+end_per_group(https_and_rabbitmq_node, Config) ->
+  rabbit_ct_helpers:run_steps(Config, rabbit_ct_broker_helpers:teardown_steps());
+
 end_per_group(_, Config) ->
 	Config.
 
-end_per_suite(Config) ->
-  Config.
-
-
-grants_access_token_using_oauth2_provider_id(Config) ->
+grants_access_token_dynamically_resolving_oauth_provider(Config) ->
+	OpenIdAndGrantToken = ?config(grants_access_token_dynamically_resolving_oauth_provider, Config),
 	#{request := #{parameters := Parameters},
 	  response := [ {code, 200}, {content_type, _CT}, {payload, JsonPayload}] }
-		= ?config(grants_access_token, Config),
+		= lists:last(OpenIdAndGrantToken),
+
+	{ok, #successful_access_token_response{access_token = AccessToken, token_type = TokenType} } =
+		oauth2_client:get_access_token(?config(oauth_provider_id, Config), build_access_token_request(Parameters)),
+
+	?assertEqual(proplists:get_value(token_type, JsonPayload), TokenType),
+	?assertEqual(proplists:get_value(access_token, JsonPayload), AccessToken).
+
+grants_access_token_using_oauth_provider_id(Config) ->
+	#{request := #{parameters := Parameters},
+	  response := [ {code, 200}, {content_type, _CT}, {payload, JsonPayload}] }
+		= ?config(grants_access_token_using_oauth_provider_id, Config),
 
 	{ok, #successful_access_token_response{access_token = AccessToken, token_type = TokenType} } =
 		oauth2_client:get_access_token(?config(oauth_provider_id, Config), build_access_token_request(Parameters)),
@@ -297,13 +314,19 @@ build_issuer(Scheme) ->
 	uri_string:recompose(#{scheme => Scheme,
 												 host => "localhost",
 												 port => rabbit_data_coercion:to_integer(?AUTH_PORT),
-												 path => "/"}).
+												 path => ""}).
 
 build_token_endpoint_uri(Scheme) ->
 	uri_string:recompose(#{scheme => Scheme,
 												 host => "localhost",
 												 port => rabbit_data_coercion:to_integer(?AUTH_PORT),
 												 path => "/token"}).
+
+build_jwks_uri(Scheme) ->
+	uri_string:recompose(#{scheme => Scheme,
+												 host => "localhost",
+												 port => rabbit_data_coercion:to_integer(?AUTH_PORT),
+												 path => "/certs"}).
 
 build_access_token_request(Request) ->
 	#access_token_request {
@@ -319,17 +342,25 @@ build_refresh_token_request(Request) ->
 build_http_oauth_provider() ->
 	#oauth_provider {
 		issuer = build_issuer("http"),
-	  token_endpoint = build_token_endpoint_uri("http")
+	  token_endpoint = build_token_endpoint_uri("http"),
+		jwks_uri = build_jwks_uri("http")
 	}.
+keep_only_issuer_and_ssl_options(OauthProvider) ->
+		#oauth_provider {
+			issuer = OauthProvider#oauth_provider.issuer,
+		  ssl_options = OauthProvider#oauth_provider.ssl_options
+		}.
 build_https_oauth_provider(CaCertFile) ->
 	#oauth_provider {
 		issuer = build_issuer("https"),
 	  token_endpoint = build_token_endpoint_uri("https"),
+		jwks_uri = build_jwks_uri("https"),
 		ssl_options = ssl_options(verify_peer, false, CaCertFile)
 	}.
-oauth_provider_to_map(#oauth_provider{ issuer = Issuer, token_endpoint = TokenEndpoint,
-	ssl_options = SslOptions}) ->
-	#{ <<"issuer">> => Issuer, <<"token_endpoint">> => TokenEndpoint, <<"ssl_options">> => SslOptions}.
+oauth_provider_to_proplist(#oauth_provider{ issuer = Issuer, token_endpoint = TokenEndpoint,
+	ssl_options = SslOptions, jwks_uri = Jwks_url}) ->
+	[ { issuer, Issuer}, {token_endpoint, TokenEndpoint},
+		{ ssl_options, SslOptions}, {jwks_url, Jwks_url} ].
 
 start_http_oauth_server(Port, Expectations) when is_list(Expectations) ->
 	Dispatch = cowboy_router:compile([{'_',
@@ -349,6 +380,18 @@ start_http_oauth_server(Port, #{request := #{path := Path}} = Expected) ->
 			 ],
 			 #{env => #{dispatch => Dispatch}}).
 
+
+start_https_oauth_server(Port, CertsDir, Expectations) when is_list(Expectations) ->
+	Dispatch = cowboy_router:compile([{'_',
+		[{Path, oauth_http_mock, Expected} || #{request := #{path := Path}} = Expected <- Expectations ]
+		}]),
+  {ok, _} = cowboy:start_tls(
+      mock_http_auth_listener,
+				[{port, Port},
+				 {certfile, filename:join([CertsDir, "server", "cert.pem"])},
+				 {keyfile, filename:join([CertsDir, "server", "key.pem"])}
+				],
+				#{env => #{dispatch => Dispatch}});
 
 start_https_oauth_server(Port, CertsDir, #{request := #{path := Path}} = Expected) ->
 	Dispatch = cowboy_router:compile([{'_', [{Path, oauth_http_mock, Expected}]}]),

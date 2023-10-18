@@ -721,7 +721,7 @@ maybe_deliver_or_enqueue(Delivery = #delivery{message = Message},
     case {will_overflow(Delivery, State), Overflow} of
         {true, 'reject-publish'} ->
             %% Drop publish and nack to publisher
-            send_reject_publish(Delivery, Delivered, State);
+            send_reject_publish(Delivery, State);
         {true, 'reject-publish-dlx'} ->
             %% Publish to DLX
             _ = with_dlx(
@@ -736,7 +736,7 @@ maybe_deliver_or_enqueue(Delivery = #delivery{message = Message},
                                                                       disabled, 1)
               end),
             %% Drop publish and nack to publisher
-            send_reject_publish(Delivery, Delivered, State);
+            send_reject_publish(Delivery, State);
         _ ->
             {IsDuplicate, BQS1} = BQ:is_duplicate(Message, BQS),
             State1 = State#q{backing_queue_state = BQS1},
@@ -745,7 +745,7 @@ maybe_deliver_or_enqueue(Delivery = #delivery{message = Message},
                 {true, drop} -> State1;
                 %% Drop publish and nack to publisher
                 {true, reject} ->
-                    send_reject_publish(Delivery, Delivered, State1);
+                    send_reject_publish(Delivery, State1);
                 %% Enqueue and maybe drop head later
                 false ->
                     deliver_or_enqueue(Delivery, Delivered, State1)
@@ -824,7 +824,6 @@ send_reject_publish(#delivery{confirm = true,
                               flow = Flow,
                               msg_seq_no = MsgSeqNo,
                               message = Msg},
-                      _Delivered,
                       State = #q{ q = Q,
                                   backing_queue = BQ,
                                   backing_queue_state = BQS,
@@ -836,8 +835,7 @@ send_reject_publish(#delivery{confirm = true,
     MTC1 = maps:remove(MsgId, MTC),
     BQS1 = BQ:discard(MsgId, SenderPid, Flow, BQS),
     State#q{ backing_queue_state = BQS1, msg_id_to_channel = MTC1 };
-send_reject_publish(#delivery{confirm = false},
-                      _Delivered, State) ->
+send_reject_publish(#delivery{confirm = false}, State) ->
     State.
 
 will_overflow(_, #q{max_length = undefined,
@@ -1496,10 +1494,6 @@ handle_cast({deliver,
     %% process that sent us the message delivery. See handle_ch_down
     %% for more info.
                    flow   -> credit_flow:ack(Sender),
-                             case SlaveWhenPublished of
-                                 true  -> credit_flow:ack(Sender); %% [0]
-                                 false -> ok
-                             end,
                              pmon:monitor(Sender, Senders);
                    noflow -> Senders
                end,

@@ -139,6 +139,8 @@ lookup_oauth_provider_with_token_endpoint(OAuth2ProviderId) ->
     _ -> OAuthProvider
   end.
 
+
+
 lookup_oauth_provider_config(OAuth2ProviderId) ->
   case application:get_env(rabbitmq_auth_backend_oauth2, oauth_providers) of
     undefined -> {error, oauth_provider_not_found};

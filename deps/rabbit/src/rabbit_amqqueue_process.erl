@@ -82,11 +82,7 @@
             %% e.g. message expiration messages from previously set up timers
             %% that may or may not be still valid
             args_policy_version,
-            %% used to discard outdated/superseded policy updates,
-            %% e.g. when policies are applied concurrently. See
-            %% https://github.com/rabbitmq/rabbitmq-server/issues/803 for one
-            %% example.
-            mirroring_policy_version = 0,
+            mirroring_policy_version = 0, %% reserved
             %% running | flow | idle
             status,
             %% true | false

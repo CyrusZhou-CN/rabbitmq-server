@@ -382,10 +382,3 @@ verify_client_local(Config, Q) ->
 set_location_policy(Config, Name, Strategy) ->
     ok = rabbit_ct_broker_helpers:set_policy(Config, 0,
       Name, <<".*">>, <<"queues">>, [{<<"queue-master-locator">>, Strategy}]).
-
-synced(Config, Nodename, Q, ExpectedSSPidLen) ->
-    Args = [<<"/">>, [name, synchronised_slave_pids]],
-    Info = rabbit_ct_broker_helpers:rpc(Config, Nodename,
-                                        rabbit_amqqueue, info_all, Args),
-    [SSPids] = [Pids || [{name, Q1}, {synchronised_slave_pids, Pids}] <- Info, Q =:= Q1],
-    length(SSPids) =:= ExpectedSSPidLen.

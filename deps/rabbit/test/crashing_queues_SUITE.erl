@@ -104,7 +104,6 @@ test_queue_failure(Node, Ch, RaceConn, MsgCount, FollowerCount, Decl) ->
         QRes = rabbit_misc:r(<<"/">>, queue, QName),
         rabbit_amqqueue:kill_queue(Node, QRes),
         assert_message_count(MsgCount, Ch, QName),
-        assert_follower_count(FollowerCount, Node, QName),
         stop_declare_racer(Racer)
     after
         amqp_channel:call(Ch, #'queue.delete'{queue = QName})
@@ -188,20 +187,3 @@ assert_message_count(Count, Ch, QName) ->
     #'queue.declare_ok'{message_count = Count} =
         amqp_channel:call(Ch, #'queue.declare'{queue   = QName,
                                                passive = true}).
-
-assert_follower_count(Count, Node, QName) ->
-    Q = lookup(Node, QName),
-    [{_, Pids}] = rpc:call(Node, rabbit_amqqueue, info, [Q, [slave_pids]]),
-    RealCount = case Pids of
-                    '' -> 0;
-                    _  -> length(Pids)
-                end,
-    case RealCount of
-        Count ->
-            ok;
-        _ when RealCount < Count ->
-            timer:sleep(10),
-            assert_follower_count(Count, Node, QName);
-        _ ->
-            exit({too_many_replicas, Count, RealCount})
-    end.

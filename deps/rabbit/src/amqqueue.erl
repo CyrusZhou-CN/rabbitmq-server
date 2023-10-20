@@ -65,7 +65,7 @@
          pattern_match_on_type/1,
          pattern_match_on_durable/1,
          pattern_match_on_type_and_durable/2,
-         reset_mirroring_and_decorators/1,
+         reset_decorators/1,
          set_immutable/1,
          qnode/1,
          macros/0]).
@@ -524,9 +524,9 @@ pattern_match_on_durable(IsDurable) ->
 pattern_match_on_type_and_durable(Type, IsDurable) ->
     #amqqueue{type = Type, durable = IsDurable, _ = '_'}.
 
--spec reset_mirroring_and_decorators(amqqueue()) -> amqqueue().
+-spec reset_decorators(amqqueue()) -> amqqueue().
 
-reset_mirroring_and_decorators(#amqqueue{} = Queue) ->
+reset_decorators(#amqqueue{} = Queue) ->
     Queue#amqqueue{decorators      = undefined}.
 
 -spec set_immutable(amqqueue()) -> amqqueue().

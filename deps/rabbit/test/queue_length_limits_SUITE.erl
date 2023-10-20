@@ -157,7 +157,7 @@ max_length_bytes_drop_head(Config, ExtraArgs) ->
     Payload1 = << <<"1">> || _ <- lists:seq(1, 80) >>,
     Payload2 = << <<"2">> || _ <- lists:seq(1, 80) >>,
     Payload3 = << <<"3">> || _ <- lists:seq(1, 80) >>,
-    check_max_length_drops_head(Config, QName, Ch, Payload1, Payload2, Payload3).
+    check_max_length_drops_head(QName, Ch, Payload1, Payload2, Payload3).
 
 max_length_drop_head(Config) ->
     max_length_drop_head(Config, [{<<"x-overflow">>, longstr, <<"drop-head">>}]).
@@ -175,7 +175,7 @@ max_length_drop_head(Config, ExtraArgs) ->
     MaxLengthArgs = [{<<"x-max-length">>, long, 1}],
     #'queue.declare_ok'{} = amqp_channel:call(Ch, #'queue.declare'{queue = QName, arguments = MaxLengthArgs ++ Args ++ ExtraArgs, durable = Durable}),
 
-    check_max_length_drops_head(Config, QName, Ch, <<"1">>, <<"2">>, <<"3">>).
+    check_max_length_drops_head(QName, Ch, <<"1">>, <<"2">>, <<"3">>).
 
 max_length_reject_confirm(Config) ->
     {_Conn, Ch} = rabbit_ct_client_helpers:open_connection_and_channel(Config, 0),
@@ -186,8 +186,8 @@ max_length_reject_confirm(Config) ->
     OverflowArgs = [{<<"x-overflow">>, longstr, <<"reject-publish">>}],
     #'queue.declare_ok'{} = amqp_channel:call(Ch, #'queue.declare'{queue = QName, arguments = MaxLengthArgs ++ OverflowArgs ++ Args, durable = Durable}),
     #'confirm.select_ok'{} = amqp_channel:call(Ch, #'confirm.select'{}),
-    check_max_length_drops_publish(Config, QName, Ch, <<"1">>, <<"2">>, <<"3">>),
-    check_max_length_rejects(Config, QName, Ch, <<"1">>, <<"2">>, <<"3">>).
+    check_max_length_drops_publish(QName, Ch, <<"1">>, <<"2">>, <<"3">>),
+    check_max_length_rejects(QName, Ch, <<"1">>, <<"2">>, <<"3">>).
 
 max_length_bytes_reject_confirm(Config) ->
     {_Conn, Ch} = rabbit_ct_client_helpers:open_connection_and_channel(Config, 0),
@@ -204,8 +204,8 @@ max_length_bytes_reject_confirm(Config) ->
     Payload2 = << <<"2">> || _ <- lists:seq(1, 80) >>,
     Payload3 = << <<"3">> || _ <- lists:seq(1, 80) >>,
 
-    check_max_length_drops_publish(Config, QNameBytes, Ch, Payload1, Payload2, Payload3),
-    check_max_length_rejects(Config, QNameBytes, Ch, Payload1, Payload2, Payload3).
+    check_max_length_drops_publish(QNameBytes, Ch, Payload1, Payload2, Payload3),
+    check_max_length_rejects(QNameBytes, Ch, Payload1, Payload2, Payload3).
 
 max_length_drop_publish(Config) ->
     {_Conn, Ch} = rabbit_ct_client_helpers:open_connection_and_channel(Config, 0),
@@ -216,7 +216,7 @@ max_length_drop_publish(Config) ->
     OverflowArgs = [{<<"x-overflow">>, longstr, <<"reject-publish">>}],
     #'queue.declare_ok'{} = amqp_channel:call(Ch, #'queue.declare'{queue = QName, arguments = MaxLengthArgs ++ OverflowArgs ++ Args, durable = Durable}),
     %% If confirms are not enable, publishes will still be dropped in reject-publish mode.
-    check_max_length_drops_publish(Config, QName, Ch, <<"1">>, <<"2">>, <<"3">>).
+    check_max_length_drops_publish(QName, Ch, <<"1">>, <<"2">>, <<"3">>).
 
 max_length_drop_publish_requeue(Config) ->
     {_Conn, Ch} = rabbit_ct_client_helpers:open_connection_and_channel(Config, 0),
@@ -227,7 +227,7 @@ max_length_drop_publish_requeue(Config) ->
     OverflowArgs = [{<<"x-overflow">>, longstr, <<"reject-publish">>}],
     #'queue.declare_ok'{} = amqp_channel:call(Ch, #'queue.declare'{queue = QName, arguments = MaxLengthArgs ++ OverflowArgs ++ Args, durable = Durable}),
     %% If confirms are not enable, publishes will still be dropped in reject-publish mode.
-    check_max_length_requeue(Config, QName, Ch, <<"1">>, <<"2">>).
+    check_max_length_requeue(QName, Ch, <<"1">>, <<"2">>).
 
 max_length_bytes_drop_publish(Config) ->
     {_Conn, Ch} = rabbit_ct_client_helpers:open_connection_and_channel(Config, 0),
@@ -243,15 +243,13 @@ max_length_bytes_drop_publish(Config) ->
     Payload2 = << <<"2">> || _ <- lists:seq(1, 80) >>,
     Payload3 = << <<"3">> || _ <- lists:seq(1, 80) >>,
 
-    check_max_length_drops_publish(Config, QNameBytes, Ch, Payload1, Payload2, Payload3).
+    check_max_length_drops_publish(QNameBytes, Ch, Payload1, Payload2, Payload3).
 
 %% -------------------------------------------------------------------
 %% Implementation
 %% -------------------------------------------------------------------
 
-check_max_length_requeue(Config, QName, Ch, Payload1, Payload2) ->
-    sync_mirrors(QName, Config),
-
+check_max_length_requeue(QName, Ch, Payload1, Payload2) ->
     #'confirm.select_ok'{} = amqp_channel:call(Ch, #'confirm.select'{}),
     amqp_channel:register_confirm_handler(Ch, self()),
 
@@ -275,9 +273,7 @@ check_max_length_requeue(Config, QName, Ch, Payload1, Payload2) ->
     {#'basic.get_ok'{}, #amqp_msg{payload = Payload2}} = amqp_channel:call(Ch, #'basic.get'{queue = QName}),
     #'basic.get_empty'{} = amqp_channel:call(Ch, #'basic.get'{queue = QName}).
 
-check_max_length_drops_publish(Config, QName, Ch, Payload1, Payload2, Payload3) ->
-    sync_mirrors(QName, Config),
-
+check_max_length_drops_publish(QName, Ch, Payload1, Payload2, Payload3) ->
     #'confirm.select_ok'{} = amqp_channel:call(Ch, #'confirm.select'{}),
     amqp_channel:register_confirm_handler(Ch, self()),
 
@@ -304,8 +300,7 @@ check_max_length_drops_publish(Config, QName, Ch, Payload1, Payload2, Payload3) 
     {#'basic.get_ok'{}, #amqp_msg{payload = Payload1}} = amqp_channel:call(Ch, #'basic.get'{queue = QName}),
     #'basic.get_empty'{} = amqp_channel:call(Ch, #'basic.get'{queue = QName}).
 
-check_max_length_rejects(Config, QName, Ch, Payload1, Payload2, Payload3) ->
-    sync_mirrors(QName, Config),
+check_max_length_rejects(QName, Ch, Payload1, Payload2, Payload3) ->
     amqp_channel:register_confirm_handler(Ch, self()),
     flush(),
     #'basic.get_empty'{} = amqp_channel:call(Ch, #'basic.get'{queue = QName}),
@@ -337,9 +332,7 @@ check_max_length_rejects(Config, QName, Ch, Payload1, Payload2, Payload3) ->
 
     {#'basic.get_ok'{}, #amqp_msg{payload = Payload2}} = amqp_channel:call(Ch, #'basic.get'{queue = QName}).
 
-check_max_length_drops_head(Config, QName, Ch, Payload1, Payload2, Payload3) ->
-    sync_mirrors(QName, Config),
-
+check_max_length_drops_head(QName, Ch, Payload1, Payload2, Payload3) ->
     #'confirm.select_ok'{} = amqp_channel:call(Ch, #'confirm.select'{}),
     amqp_channel:register_confirm_handler(Ch, self()),
 
@@ -366,13 +359,6 @@ check_max_length_drops_head(Config, QName, Ch, Payload1, Payload2, Payload3) ->
     amqp_channel:wait_for_confirms(Ch, 5),
     {#'basic.get_ok'{}, #amqp_msg{payload = Payload3}} = amqp_channel:call(Ch, #'basic.get'{queue = QName}),
     #'basic.get_empty'{} = amqp_channel:call(Ch, #'basic.get'{queue = QName}).
-
-sync_mirrors(QName, Config) ->
-    case rabbit_ct_helpers:get_config(Config, is_mirrored) of
-        true ->
-            rabbit_ct_broker_helpers:rabbitmqctl(Config, 0, [<<"sync_queue">>, QName]);
-        _ -> ok
-    end.
 
 flush() ->
     receive _ -> flush()

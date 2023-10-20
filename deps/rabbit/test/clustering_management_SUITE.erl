@@ -562,19 +562,19 @@ reset_removes_things(Config) ->
     test_removes_things(Config, fun (R, _H) -> ok = reset(Config, R) end).
 
 test_removes_things(Config, LoseRabbit) ->
-    Unmirrored = <<"unmirrored-queue">>,
+    Classic = <<"classic-queue">>,
     [Rabbit, Hare | _] = cluster_members(Config),
     RCh = rabbit_ct_client_helpers:open_channel(Config, Rabbit),
-    declare(RCh, Unmirrored),
+    declare(RCh, Classic),
     ok = stop_app(Config, Rabbit),
 
     HCh = rabbit_ct_client_helpers:open_channel(Config, Hare),
     {'EXIT',{{shutdown,{server_initiated_close,404,_}}, _}} =
-        (catch declare(HCh, Unmirrored)),
+        (catch declare(HCh, Classic)),
 
     ok = LoseRabbit(Rabbit, Hare),
     HCh2 = rabbit_ct_client_helpers:open_channel(Config, Hare),
-    declare(HCh2, Unmirrored),
+    declare(HCh2, Classic),
     ok.
 
 forget_node_in_khepri(Config) ->
@@ -757,21 +757,21 @@ reset_last_disc_node(Config) ->
 forget_offline_removes_things(Config) ->
     [Rabbit, Hare] = rabbit_ct_broker_helpers:get_node_configs(Config,
       nodename),
-    Unmirrored = <<"unmirrored-queue">>,
+    Classic = <<"classic-queue">>,
     X = <<"X">>,
     RCh = rabbit_ct_client_helpers:open_channel(Config, Rabbit),
-    declare(RCh, Unmirrored),
+    declare(RCh, Classic),
 
     amqp_channel:call(RCh, #'exchange.declare'{durable     = true,
                                                exchange    = X,
                                                auto_delete = true}),
-    amqp_channel:call(RCh, #'queue.bind'{queue    = Unmirrored,
+    amqp_channel:call(RCh, #'queue.bind'{queue    = Classic,
                                          exchange = X}),
     ok = rabbit_ct_broker_helpers:stop_broker(Config, Rabbit),
 
     HCh = rabbit_ct_client_helpers:open_channel(Config, Hare),
     {'EXIT',{{shutdown,{server_initiated_close,404,_}}, _}} =
-        (catch declare(HCh, Unmirrored)),
+        (catch declare(HCh, Classic)),
 
     ok = rabbit_ct_broker_helpers:stop_node(Config, Hare),
     ok = rabbit_ct_broker_helpers:stop_node(Config, Rabbit),
@@ -779,7 +779,7 @@ forget_offline_removes_things(Config) ->
     ok = rabbit_ct_broker_helpers:start_node(Config, Hare),
 
     HCh2 = rabbit_ct_client_helpers:open_channel(Config, Hare),
-    declare(HCh2, Unmirrored),
+    declare(HCh2, Classic),
     {'EXIT',{{shutdown,{server_initiated_close,404,_}}, _}} =
         (catch amqp_channel:call(HCh2,#'exchange.declare'{durable     = true,
                                                           exchange    = X,

@@ -541,8 +541,8 @@ with(#resource{} = Name, F, E, RetriesLeft) ->
             %% Something bad happened to that queue, we are bailing out
             %% on processing current request.
             E({absent, Q, timeout});
-        {ok, Q} when ?amqqueue_state_is(Q, stopped) andalso RetriesLeft =:= 0 ->
-            %% The queue was stopped and not migrated
+        {ok, Q} when ?amqqueue_state_is(Q, stopped) ->
+            %% The queue was stopped
             E({absent, Q, stopped});
         %% The queue process has crashed with unknown error
         {ok, Q} when ?amqqueue_state_is(Q, crashed) ->

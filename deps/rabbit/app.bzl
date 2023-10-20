@@ -9,12 +9,10 @@ def all_beam_files(name = "all_beam_files"):
     erlang_bytecode(
         name = "behaviours",
         srcs = [
-            "src/gm.erl",
             "src/mc.erl",
             "src/rabbit_backing_queue.erl",
             "src/rabbit_credential_validator.erl",
             "src/rabbit_exchange_type.erl",
-            "src/rabbit_mirror_queue_mode.erl",
             "src/rabbit_policy_merge_strategy.erl",
             "src/rabbit_queue_master_locator.erl",
             "src/rabbit_queue_type.erl",
@@ -159,14 +157,7 @@ def all_beam_files(name = "all_beam_files"):
             "src/rabbit_memory_monitor.erl",
             "src/rabbit_message_interceptor.erl",
             "src/rabbit_metrics.erl",
-            "src/rabbit_mirror_queue_coordinator.erl",
-            "src/rabbit_mirror_queue_master.erl",
             "src/rabbit_mirror_queue_misc.erl",
-            "src/rabbit_mirror_queue_mode_all.erl",
-            "src/rabbit_mirror_queue_mode_exactly.erl",
-            "src/rabbit_mirror_queue_mode_nodes.erl",
-            "src/rabbit_mirror_queue_slave.erl",
-            "src/rabbit_mirror_queue_sync.erl",
             "src/rabbit_mnesia.erl",
             "src/rabbit_mnesia_rename.erl",
             "src/rabbit_msg_file.erl",
@@ -270,12 +261,10 @@ def all_test_beam_files(name = "all_test_beam_files"):
         name = "test_behaviours",
         testonly = True,
         srcs = [
-            "src/gm.erl",
             "src/mc.erl",
             "src/rabbit_backing_queue.erl",
             "src/rabbit_credential_validator.erl",
             "src/rabbit_exchange_type.erl",
-            "src/rabbit_mirror_queue_mode.erl",
             "src/rabbit_policy_merge_strategy.erl",
             "src/rabbit_queue_master_locator.erl",
             "src/rabbit_queue_type.erl",
@@ -421,14 +410,7 @@ def all_test_beam_files(name = "all_test_beam_files"):
             "src/rabbit_memory_monitor.erl",
             "src/rabbit_message_interceptor.erl",
             "src/rabbit_metrics.erl",
-            "src/rabbit_mirror_queue_coordinator.erl",
-            "src/rabbit_mirror_queue_master.erl",
             "src/rabbit_mirror_queue_misc.erl",
-            "src/rabbit_mirror_queue_mode_all.erl",
-            "src/rabbit_mirror_queue_mode_exactly.erl",
-            "src/rabbit_mirror_queue_mode_nodes.erl",
-            "src/rabbit_mirror_queue_slave.erl",
-            "src/rabbit_mirror_queue_sync.erl",
             "src/rabbit_mnesia.erl",
             "src/rabbit_mnesia_rename.erl",
             "src/rabbit_msg_file.erl",
@@ -568,7 +550,6 @@ def all_srcs(name = "all_srcs"):
             "src/background_gc.erl",
             "src/code_server_cache.erl",
             "src/gatherer.erl",
-            "src/gm.erl",
             "src/internal_user.erl",
             "src/lqueue.erl",
             "src/mc.erl",
@@ -699,15 +680,7 @@ def all_srcs(name = "all_srcs"):
             "src/rabbit_memory_monitor.erl",
             "src/rabbit_message_interceptor.erl",
             "src/rabbit_metrics.erl",
-            "src/rabbit_mirror_queue_coordinator.erl",
-            "src/rabbit_mirror_queue_master.erl",
             "src/rabbit_mirror_queue_misc.erl",
-            "src/rabbit_mirror_queue_mode.erl",
-            "src/rabbit_mirror_queue_mode_all.erl",
-            "src/rabbit_mirror_queue_mode_exactly.erl",
-            "src/rabbit_mirror_queue_mode_nodes.erl",
-            "src/rabbit_mirror_queue_slave.erl",
-            "src/rabbit_mirror_queue_sync.erl",
             "src/rabbit_mnesia.erl",
             "src/rabbit_mnesia_rename.erl",
             "src/rabbit_msg_file.erl",
@@ -980,15 +953,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         erlc_opts = "//:test_erlc_opts",
     )
     erlang_bytecode(
-        name = "dynamic_ha_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/dynamic_ha_SUITE.erl"],
-        outs = ["test/dynamic_ha_SUITE.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/amqp_client:erlang_app", "//deps/rabbitmq_ct_helpers:erlang_app", "@proper//:erlang_app"],
-    )
-    erlang_bytecode(
         name = "dynamic_qq_SUITE_beam_files",
         testonly = True,
         srcs = ["test/dynamic_qq_SUITE.erl"],
@@ -996,15 +960,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         app_name = "rabbit",
         erlc_opts = "//:test_erlc_opts",
         deps = ["//deps/amqp_client:erlang_app", "//deps/rabbitmq_ct_helpers:erlang_app"],
-    )
-    erlang_bytecode(
-        name = "eager_sync_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/eager_sync_SUITE.erl"],
-        outs = ["test/eager_sync_SUITE.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/amqp_client:erlang_app"],
     )
     erlang_bytecode(
         name = "feature_flags_SUITE_beam_files",
@@ -1076,15 +1031,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         app_name = "rabbit",
         erlc_opts = "//:test_erlc_opts",
         deps = ["//deps/amqp_client:erlang_app", "//deps/rabbitmq_ct_helpers:erlang_app"],
-    )
-    erlang_bytecode(
-        name = "many_node_ha_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/many_node_ha_SUITE.erl"],
-        outs = ["test/many_node_ha_SUITE.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/amqp_client:erlang_app"],
     )
     erlang_bytecode(
         name = "message_size_limit_SUITE_beam_files",
@@ -1467,15 +1413,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         erlc_opts = "//:test_erlc_opts",
     )
     erlang_bytecode(
-        name = "simple_ha_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/simple_ha_SUITE.erl"],
-        outs = ["test/simple_ha_SUITE.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/amqp_client:erlang_app"],
-    )
-    erlang_bytecode(
         name = "single_active_consumer_SUITE_beam_files",
         testonly = True,
         srcs = ["test/single_active_consumer_SUITE.erl"],
@@ -1601,24 +1538,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         erlc_opts = "//:test_erlc_opts",
     )
     erlang_bytecode(
-        name = "test_rabbit_ha_test_consumer_beam",
-        testonly = True,
-        srcs = ["test/rabbit_ha_test_consumer.erl"],
-        outs = ["test/rabbit_ha_test_consumer.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/amqp_client:erlang_app"],
-    )
-    erlang_bytecode(
-        name = "test_rabbit_ha_test_producer_beam",
-        testonly = True,
-        srcs = ["test/rabbit_ha_test_producer.erl"],
-        outs = ["test/rabbit_ha_test_producer.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/amqp_client:erlang_app"],
-    )
-    erlang_bytecode(
         name = "test_test_util_beam",
         testonly = True,
         srcs = ["test/test_util.erl"],
@@ -1705,23 +1624,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         app_name = "rabbit",
         erlc_opts = "//:test_erlc_opts",
         deps = ["//deps/amqp_client:erlang_app"],
-    )
-    erlang_bytecode(
-        name = "unit_classic_mirrored_queue_sync_throttling_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/unit_classic_mirrored_queue_sync_throttling_SUITE.erl"],
-        outs = ["test/unit_classic_mirrored_queue_sync_throttling_SUITE.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/rabbit_common:erlang_app"],
-    )
-    erlang_bytecode(
-        name = "unit_classic_mirrored_queue_throughput_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/unit_classic_mirrored_queue_throughput_SUITE.erl"],
-        outs = ["test/unit_classic_mirrored_queue_throughput_SUITE.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
     )
     erlang_bytecode(
         name = "unit_cluster_formation_locking_mocks_SUITE_beam_files",

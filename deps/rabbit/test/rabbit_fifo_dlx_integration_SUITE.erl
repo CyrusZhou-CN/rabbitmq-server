@@ -126,8 +126,6 @@ init_per_testcase(Testcase, Config) ->
         {single_dlx_worker, true, _} ->
             {skip, "single_dlx_worker is not mixed version compatible because process "
              "rabbit_fifo_dlx_sup does not exist in 3.9"};
-        {many_target_queues, _, true} ->
-            {skip, "Classic queue mirroring not supported by Khepri"};
         _ ->
             Config1 = rabbit_ct_helpers:testcase_started(Config, Testcase),
             T = rabbit_data_coercion:to_binary(Testcase),
@@ -812,7 +810,7 @@ target_quorum_queue_delete_create(Config) ->
 %% 2. Target queue can be classic queue, quorum queue, or stream queue.
 %%
 %% Lesson learnt by writing this test:
-%% If there are multiple target queues, messages will not be sent / routed to target non-mirrored durable classic queues
+%% If there are multiple target queues, messages will not be sent / routed to target durable classic queues
 %% when their host node is temporarily down because these queues get temporarily deleted from the rabbit_queue RAM table
 %% (but will still be present in the rabbit_durable_queue DISC table). See:
 %% https://github.com/rabbitmq/rabbitmq-server/blob/cf76b479300b767b8ea450293d096cbf729ed734/deps/rabbit/src/rabbit_amqqueue.erl#L1955-L1964
@@ -828,7 +826,7 @@ many_target_queues(Config) ->
     DLRKey = <<"k1">>,
     %% Create topology:
     %% * source quorum queue with 1 replica on node 1
-    %% * target non-mirrored classic queue on node 1
+    %% * target classic queue on node 1
     %% * target quorum queue with 3 replicas
     %% * target stream queue with 3 replicas
     declare_queue(Ch, SourceQ, [{<<"x-dead-letter-exchange">>, longstr, DLX},

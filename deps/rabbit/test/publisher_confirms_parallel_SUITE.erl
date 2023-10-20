@@ -372,13 +372,6 @@ consume(Ch, QName, Payloads) ->
 consume_empty(Ch, QName) ->
     #'basic.get_empty'{} = amqp_channel:call(Ch, #'basic.get'{queue = QName}).
 
-sync_mirrors(QName, Config) ->
-    case ?config(is_mirrored, Config) of
-        true ->
-            rabbit_ct_broker_helpers:rabbitmqctl(Config, 0, [<<"sync_queue">>, QName]);
-        _ -> ok
-    end.
-
 receive_many([]) ->
     ok;
 receive_many(DTags) ->

@@ -126,7 +126,8 @@ delete(Q0, IfUnused, IfEmpty, ActingUser) when ?amqqueue_is_classic(Q0) ->
 is_recoverable(Q) when ?is_amqqueue(Q) and ?amqqueue_is_classic(Q) ->
     Node = node(),
     Node =:= amqqueue:qnode(Q) andalso
-    (not rabbit_db_queue:consistent_exists(amqqueue:get_name(Q))).
+    (not rabbit_db_queue:consistent_exists(amqqueue:get_name(Q))
+     orelse not rabbit_process:is_process_alive(amqqueue:get_pid(Q))).
 
 recover(VHost, Queues) ->
     {ok, BQ} = application:get_env(rabbit, backing_queue_module),

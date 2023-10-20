@@ -710,16 +710,6 @@ handle_cast({force_event_refresh, Ref}, State) ->
                         Ref),
     noreply(rabbit_event:init_stats_timer(State, #ch.stats_timer));
 
-handle_cast({mandatory_received, _MsgSeqNo}, State) ->
-    %% This feature was used by `rabbit_amqqueue_process` and
-    %% `rabbit_mirror_queue_slave` up-to and including RabbitMQ 3.7.x.
-    %% It is unused in 3.8.x and thus deprecated. We keep it to support
-    %% in-place upgrades to 3.8.x (i.e. mixed-version clusters), but it
-    %% is a no-op starting with that version.
-    %%
-    %% NB: don't call noreply/1 since we don't want to send confirms.
-    noreply_coalesce(State);
-
 handle_cast({queue_event, QRef, Evt},
             #ch{queue_states = QueueStates0} = State0) ->
     case rabbit_queue_type:handle_event(QRef, Evt, QueueStates0) of

@@ -386,7 +386,7 @@ get_rebalance_lock(Pid) when is_pid(Pid) ->
             false
     end.
 
--spec rebalance('all' | 'quorum' | 'classic', binary(), binary()) ->
+-spec rebalance('all' | 'quorum', binary(), binary()) ->
                        {ok, [{node(), pos_integer()}]} | {error, term()}.
 rebalance(Type, VhostSpec, QueueSpec) ->
     %% We have not yet acquired the rebalance_queues global lock.
@@ -419,7 +419,7 @@ maybe_rebalance(false, _Type, _VhostSpec, _QueueSpec) ->
 
 %% Stream queues don't yet support rebalance
 filter_per_type(all, Q)  ->
-    ?amqqueue_is_quorum(Q) or ?amqqueue_is_classic(Q) or ?amqqueue_is_stream(Q);
+    ?amqqueue_is_quorum(Q) or ?amqqueue_is_stream(Q);
 filter_per_type(quorum, Q) ->
     ?amqqueue_is_quorum(Q);
 filter_per_type(stream, Q) ->

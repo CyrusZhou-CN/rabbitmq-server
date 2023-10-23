@@ -518,7 +518,6 @@ def all_srcs(name = "all_srcs"):
         srcs = [
             "include/amqqueue.hrl",
             "include/amqqueue_v2.hrl",
-            "include/gm_specs.hrl",
             "include/mc.hrl",
             "include/rabbit_global_counters.hrl",
             "include/vhost.hrl",
@@ -1422,15 +1421,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         deps = ["//deps/amqp_client:erlang_app"],
     )
     erlang_bytecode(
-        name = "sync_detection_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/sync_detection_SUITE.erl"],
-        outs = ["test/sync_detection_SUITE.beam"],
-        app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-        deps = ["//deps/amqp_client:erlang_app"],
-    )
-    erlang_bytecode(
         name = "term_to_binary_compat_prop_SUITE_beam_files",
         testonly = True,
         srcs = ["test/term_to_binary_compat_prop_SUITE.erl"],
@@ -1689,16 +1679,6 @@ def test_suite_beam_files(name = "test_suite_beam_files"):
         srcs = ["test/unit_gen_server2_SUITE.erl"],
         outs = ["test/unit_gen_server2_SUITE.beam"],
         app_name = "rabbit",
-        erlc_opts = "//:test_erlc_opts",
-    )
-    erlang_bytecode(
-        name = "unit_gm_SUITE_beam_files",
-        testonly = True,
-        srcs = ["test/unit_gm_SUITE.erl"],
-        outs = ["test/unit_gm_SUITE.beam"],
-        hdrs = ["include/gm_specs.hrl"],
-        app_name = "rabbit",
-        beam = ["ebin/gm.beam"],
         erlc_opts = "//:test_erlc_opts",
     )
     erlang_bytecode(

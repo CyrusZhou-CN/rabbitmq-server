@@ -68,8 +68,6 @@
 %% Mgmt HTTP API refactor
 -export([handle_method/6]).
 
--import(rabbit_misc, [maps_put_truthy/3]).
-
 -record(conf, {
           %% starting | running | flow | closing
           state,
@@ -166,8 +164,7 @@
              rejected,
              %% used by "one shot RPC" (amq.
              reply_consumer,
-             %% flow | noflow, see rabbitmq-server#114
-             delivery_flow,
+             delivery_flow, %% Deprecated since removal of CMQ in 4.0
              interceptor_state,
              queue_states,
              tick_timer,
@@ -496,10 +493,6 @@ init([Channel, ReaderPid, WriterPid, ConnPid, ConnName, Protocol, User, VHost,
     ?LG_PROCESS_TYPE(channel),
     ?store_proc_name({ConnName, Channel}),
     ok = pg_local:join(rabbit_channels, self()),
-    Flow = case rabbit_misc:get_env(rabbit, mirroring_flow_control, true) of
-             true   -> flow;
-             false  -> noflow
-           end,
     {ok, {Global0, Prefetch}} = application:get_env(rabbit, default_consumer_prefetch),
     Limiter0 = rabbit_limiter:new(LimiterPid),
     Global = Global0 andalso is_global_qos_permitted(),
@@ -551,7 +544,6 @@ init([Channel, ReaderPid, WriterPid, ConnPid, ConnName, Protocol, User, VHost,
                 rejected                = [],
                 confirmed               = [],
                 reply_consumer          = none,
-                delivery_flow           = Flow,
                 interceptor_state       = undefined,
                 queue_states            = rabbit_queue_type:init()
                },
@@ -1225,9 +1217,8 @@ handle_method(#'basic.publish'{exchange    = ExchangeNameBin,
                                                writer_gc_threshold = GCThreshold
                                               },
                                    tx               = Tx,
-                                   confirm_enabled  = ConfirmEnabled,
-                                   delivery_flow    = Flow
-                                   }) ->
+                                   confirm_enabled  = ConfirmEnabled
+                                  }) ->
     State0 = maybe_increase_global_publishers(State),
     rabbit_global_counters:messages_received(amqp091, 1),
     check_msg_size(Content, MaxMessageSize, GCThreshold),
@@ -1247,11 +1238,13 @@ handle_method(#'basic.publish'{exchange    = ExchangeNameBin,
     {DeliveryOptions, State1} =
         case DoConfirm of
             false ->
-                {maps_put_truthy(flow, Flow, #{mandatory => Mandatory}), State0};
+                {#{mandatory => Mandatory,
+                   flow => flow}, State0};
             true  ->
                 rabbit_global_counters:messages_received_confirm(amqp091, 1),
                 SeqNo = State0#ch.publish_seqno,
-                Opts = maps_put_truthy(flow, Flow, #{correlation => SeqNo, mandatory => Mandatory}),
+                Opts = #{correlation => SeqNo, mandatory => Mandatory,
+                         flow => flow},
                 {Opts, State0#ch{publish_seqno = SeqNo + 1}}
         end,
     % rabbit_feature_flags:is_enabled(message_containers),

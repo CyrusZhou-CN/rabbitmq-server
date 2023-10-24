@@ -636,14 +636,13 @@ send_or_record_confirm(#delivery{confirm    = true,
 
 discard(#delivery{confirm = Confirm,
                   sender  = SenderPid,
-                  flow    = Flow,
                   message = Msg}, BQ, BQS, MTC, QName) ->
     MsgId = mc:get_annotation(id, Msg),
     MTC1 = case Confirm of
                true  -> confirm_messages([MsgId], MTC, QName);
                false -> MTC
            end,
-    BQS1 = BQ:discard(MsgId, SenderPid, Flow, BQS),
+    BQS1 = BQ:discard(MsgId, SenderPid, BQS),
     {BQS1, MTC1}.
 
 run_message_queue(State) -> run_message_queue(false, State).
@@ -667,7 +666,6 @@ run_message_queue(ActiveConsumersChanged, State) ->
     end.
 
 attempt_delivery(Delivery = #delivery{sender  = SenderPid,
-                                      flow    = Flow,
                                       message = Message},
                  Props, Delivered, State = #q{q                   = Q,
                                               backing_queue       = BQ,
@@ -676,7 +674,7 @@ attempt_delivery(Delivery = #delivery{sender  = SenderPid,
     case rabbit_queue_consumers:deliver(
            fun (true)  -> {AckTag, BQS1} =
                               BQ:publish_delivered(
-                                Message, Props, SenderPid, Flow, BQS),
+                                Message, Props, SenderPid, BQS),
                           {{Message, Delivered, AckTag}, {BQS1, MTC}};
                (false) -> {{Message, Delivered, undefined},
                            discard(Delivery, BQ, BQS, MTC, amqqueue:get_name(Q))}
@@ -735,8 +733,7 @@ maybe_deliver_or_enqueue(Delivery = #delivery{message = Message},
     end.
 
 deliver_or_enqueue(Delivery = #delivery{message = Message,
-                                        sender  = SenderPid,
-                                        flow    = Flow},
+                                        sender  = SenderPid},
                    Delivered,
                    State = #q{q = Q, backing_queue = BQ}) ->
     {Confirm, State1} = send_or_record_confirm(Delivery, State),
@@ -754,7 +751,7 @@ deliver_or_enqueue(Delivery = #delivery{message = Message,
             State2#q{backing_queue_state = BQS1, msg_id_to_channel = MTC1};
         {undelivered, State2 = #q{backing_queue_state = BQS}} ->
 
-            BQS1 = BQ:publish(Message, Props, Delivered, SenderPid, Flow, BQS),
+            BQS1 = BQ:publish(Message, Props, Delivered, SenderPid, BQS),
             {Dropped, State3 = #q{backing_queue_state = BQS2}} =
                 maybe_drop_head(State2#q{backing_queue_state = BQS1}),
             QLen = BQ:len(BQS2),
@@ -803,7 +800,6 @@ maybe_drop_head(AlreadyDropped, State = #q{backing_queue       = BQ,
 
 send_reject_publish(#delivery{confirm = true,
                               sender = SenderPid,
-                              flow = Flow,
                               msg_seq_no = MsgSeqNo,
                               message = Msg},
                       State = #q{ q = Q,
@@ -815,7 +811,7 @@ send_reject_publish(#delivery{confirm = true,
                                              amqqueue:get_name(Q), MsgSeqNo),
 
     MTC1 = maps:remove(MsgId, MTC),
-    BQS1 = BQ:discard(MsgId, SenderPid, Flow, BQS),
+    BQS1 = BQ:discard(MsgId, SenderPid, BQS),
     State#q{ backing_queue_state = BQS1, msg_id_to_channel = MTC1 };
 send_reject_publish(#delivery{confirm = false}, State) ->
     State.

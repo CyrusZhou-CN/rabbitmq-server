@@ -148,9 +148,10 @@ init({Q, Marker}) ->
         false ->
             %% restart
             QueueName = amqqueue:get_name(Q),
+            {ok, Q1} = rabbit_amqqueue:lookup(QueueName),
             rabbit_log:error("Restarting crashed ~ts.", [rabbit_misc:rs(QueueName)]),
             gen_server2:cast(self(), init),
-            init(Q)
+            init(Q1)
     end;
 
 init(Q) ->

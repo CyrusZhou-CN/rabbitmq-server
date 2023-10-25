@@ -52,6 +52,17 @@ init() ->
 
     pre_init(IsVirgin),
 
+    case IsVirgin of
+        true ->
+            %% At this point, the database backend could change if the
+            %% node joins a cluster and that cluster uses a different
+            %% database.
+            rabbit_peer_discovery:maybe_create_cluster(
+              fun create_cluster_callback/2);
+        false ->
+            ok
+    end,
+
     Ret = case rabbit_khepri:is_enabled() of
               true  -> init_using_khepri();
               false -> init_using_mnesia()
@@ -76,6 +87,20 @@ pre_init(IsVirgin) ->
     Members = rabbit_db_cluster:members(),
     OtherMembers = rabbit_nodes:nodes_excl_me(Members),
     rabbit_db_cluster:ensure_feature_flags_are_in_sync(OtherMembers, IsVirgin).
+
+create_cluster_callback(none, _NodeType) ->
+    ok;
+create_cluster_callback(RemoteNode, NodeType) ->
+    NodeType1 = case rabbit_mnesia:is_node_type_permitted(NodeType) of
+                    false -> disc;
+                    true  -> NodeType
+                end,
+    Ret = rabbit_db_cluster:join(RemoteNode, NodeType1),
+    ?assertNotEqual({ok, already_member}, Ret),
+    case Ret of
+        ok                 -> ok;
+        {error, _} = Error -> throw(Error)
+    end.
 
 post_init(false = _IsVirgin) ->
     rabbit_peer_discovery:maybe_register();

@@ -27,7 +27,7 @@
 -export([maybe_create_cluster/3]).
 -endif.
 
--type create_cluster_callback() :: fun((node(),
+-type create_cluster_callback() :: fun((node() | none,
                                         rabbit_db_cluster:node_type())
                                        -> ok).
 

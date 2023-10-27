@@ -305,22 +305,10 @@ init_single_node(CreateClusterCallback) ->
     ok.
 
 create_cluster(RemoteNode, NodeType, CreateClusterCallback) ->
-    %% We want to synchronize feature flags first before we update the cluster
-    %% membership. This is needed to ensure the local list of Mnesia tables
-    %% matches the rest of the cluster for example, in case a feature flag
-    %% adds or removes tables.
-    %%
-    %% For instance, a feature flag may remove a table (so it's gone from the
-    %% cluster). If we were to wait for that table locally before
-    %% synchronizing feature flags, we would wait forever; indeed the feature
-    %% flag being disabled before sync, `rabbit_table:definitions()' would
-    %% return the old table.
-    %%
-    %% Feature flags need to be synced before any change to Mnesia membership.
-    %% If enabling feature flags fails, Mnesia could remain in an inconsistent
-    %% state that prevents later joining the nodes.
-    IsVirgin = rabbit_db:is_virgin_node(),
-    rabbit_db_cluster:ensure_feature_flags_are_in_sync([RemoteNode], IsVirgin),
+    %% We used to synchronize feature flags here before we updated the cluster
+    %% membership. We don't do it anymore because the `join_cluster' code
+    %% resets the joining node and copies the feature flags states from the
+    %% cluster.
     CreateClusterCallback(RemoteNode, NodeType),
     rabbit_node_monitor:notify_joined_cluster(),
     ok.

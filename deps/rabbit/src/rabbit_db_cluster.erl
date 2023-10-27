@@ -104,17 +104,29 @@ join(RemoteNode, NodeType)
             RestartRabbit = rabbit:is_running(),
             case RestartRabbit of
                 true ->
+                    ?LOG_DEBUG(
+                       "DB: stopping `rabbit` before `join_cluster`",
+                       #{domain => ?RMQLOG_DOMAIN_DB}),
                     rabbit:stop();
                 false ->
                     case RestartFFCtl of
                         true ->
+                            ?LOG_DEBUG(
+                               "DB: stopping `rabbit_ff_controller` before "
+                               "`join_cluster`",
+                               #{domain => ?RMQLOG_DOMAIN_DB}),
                             ok = rabbit_ff_controller:wait_for_task_and_stop();
                         false ->
                             ok
                     end,
                     case RestartMnesia of
-                        true  -> rabbit_mnesia:stop_mnesia();
-                        false -> ok
+                        true ->
+                            ?LOG_DEBUG(
+                               "DB: stopping Mnesia before `join_cluster`",
+                               #{domain => ?RMQLOG_DOMAIN_DB}),
+                            rabbit_mnesia:stop_mnesia();
+                        false ->
+                            ok
                     end
             end,
 
@@ -134,23 +146,40 @@ join(RemoteNode, NodeType)
             %% still need it).
             case RestartRabbit of
                 true ->
+                    ?LOG_DEBUG(
+                       "DB: restarting `rabbit` after `join_cluster`",
+                       #{domain => ?RMQLOG_DOMAIN_DB}),
                     rabbit:start();
                 false ->
                     case RestartFFCtl of
                         true ->
+                            ?LOG_DEBUG(
+                               "DB: restarting `rabbit_ff_controller` after "
+                               "`join_cluster`",
+                               #{domain => ?RMQLOG_DOMAIN_DB}),
                             ok = rabbit_sup:start_child(rabbit_ff_controller);
                         false ->
                             ok
                     end,
                     NeedMnesia = not rabbit_khepri:is_enabled(),
                     case RestartMnesia andalso NeedMnesia of
-                        true  -> rabbit_mnesia:start_mnesia(false);
-                        false -> ok
+                        true ->
+                            ?LOG_DEBUG(
+                               "DB: restarting Mnesia after `join_cluster`",
+                               #{domain => ?RMQLOG_DOMAIN_DB}),
+                            rabbit_mnesia:start_mnesia(false);
+                        false ->
+                            ok
                     end
             end,
 
             case Ret of
                 ok ->
+                    ?LOG_INFO(
+                       "DB: successfully joined cluster using remote "
+                       "nodes:~n~tp",
+                       [ClusterNodes],
+                       #{domain => ?RMQLOG_DOMAIN_DB}),
                     rabbit_node_monitor:notify_joined_cluster(),
                     ok;
                 {error, _} = Error ->
